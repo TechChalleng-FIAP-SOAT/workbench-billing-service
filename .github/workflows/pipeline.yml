@@ -20,7 +20,7 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: maven
-      - run: mvn test
+      - run: mvn verify
       - id: jacoco
         uses: cicirello/jacoco-badge-generator@v2.0.1
       - uses: actions/upload-artifact@v4.4.0
