@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-service
+  namespace: billing-service
+  labels:
+    app: billing-service
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: billing-service
+  template:
+    metadata:
+      labels:
+        app: billing-service
+        tags.datadoghq.com/service: billing-service
+        tags.datadoghq.com/version: "1.0.0"
+      annotations:
+        admission.datadoghq.com/java-lib.version: "latest"
+        ad.datadoghq.com/billing-service.logs: '[{"source":"java","service":"billing-service"}]'
+    spec:
+      containers:
+        - name: billing-service
+          image: REPLACE_IMAGE
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: billing-service-config
+            - secretRef:
+                name: billing-service-secret
+          env:
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-service
+  namespace: billing-service
+  labels:
+    app: billing-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: billing-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# PostgreSQL in-cluster — SOMENTE para ambiente local/dev.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-db
+  namespace: billing-service
+  labels:
+    app: billing-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-db
+  template:
+    metadata:
+      labels:
+        app: billing-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: billing
+            - name: POSTGRES_USER
+              value: dbadmin
+            - name: POSTGRES_PASSWORD
+              value: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-db
+  namespace: billing-service
+spec:
+  selector:
+    app: billing-db
+  ports:
+    - port: 5432
+      targetPort: 5432

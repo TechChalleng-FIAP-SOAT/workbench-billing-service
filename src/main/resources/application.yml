@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: billing-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:15433/billing}
+    username: ${SPRING_DATASOURCE_USERNAME:dbadmin}
+    password: ${SPRING_DATASOURCE_PASSWORD:senha-super-segura}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+logging:
+  file:
+    name: /tmp/app.log
+  level:
+    root: INFO
+
+management:
+  metrics:
+    tags:
+      service: ${DD_SERVICE:${spring.application.name}}
+      env: ${DD_ENV:local}
+      version: ${DD_VERSION:local}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  datadog:
+    metrics:
+      export:
+        enabled: ${DD_METRICS_ENABLED:false}
+        api-key: ${DD_API_KEY:}
+        uri: ${DD_METRICS_URI:https://api.datadoghq.com}
+        step: 1m
+
+server:
+  port: 8080
+
+# Mercado Pago (pagamento).
+#  - provider=fake (default): adapter determinístico, offline (testes/dev).
+#  - provider=mercadopago: integra o sandbox (requer access-token de teste).
+payment:
+  provider: ${PAYMENT_PROVIDER:fake}
+  mercadopago:
+    access-token: ${MP_ACCESS_TOKEN:}
+    base-url: ${MP_BASE_URL:https://api.mercadopago.com}
+    # URL pública deste serviço para o webhook de notificação.
+    notification-url: ${MP_NOTIFICATION_URL:}
+
+# Mensageria (Saga) — mesma convenção dos demais serviços.
+messaging:
+  enabled: ${MESSAGING_ENABLED:false}
+  region: ${AWS_REGION:us-east-1}
+  endpoint: ${AWS_ENDPOINT:}
+  billing-events-topic-arn: ${BILLING_EVENTS_TOPIC_ARN:}
+  commands-queue-url: ${BILLING_COMMANDS_QUEUE_URL:}
