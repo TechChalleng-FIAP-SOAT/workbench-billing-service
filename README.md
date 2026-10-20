@@ -6,8 +6,11 @@ com histórico append-only. Arquitetura Hexagonal, **PostgreSQL** + Flyway.
 
 ## Responsabilidades
 
-- **Orçamento**: montado a partir dos itens recebidos no comando `ComandoGerarOrcamento`
-  (já precificados pelo Execution); congela o snapshot de preço.
+- **Orçamento**: montado a partir dos itens recebidos no `ComandoGerarOrcamento` —
+  **peças** (precificadas pelo Execution, com `brand`/marca) + **mão de obra** por
+  serviço (item `SERVICE_COST`, vinda do OS Service). Congela o snapshot; o `Budget`
+  expõe total de peças, total de MO e total geral. `productId` é o id (texto) do
+  produto no Execution — apenas referência de rastreio (catálogos independentes).
 - **Pagamento**: ocorre **no fim do fluxo** (ADR-0005). Máquina de estados
   `PENDENTE → APROVADO/RECUSADO`, e `APROVADO → ESTORNADO` (compensação da Saga).
 - **Histórico de pagamento** (append-only) para auditoria.
@@ -37,9 +40,12 @@ código** (ADR-0005). A confirmação chega via webhook em `POST /api/payments/w
 
 | Recebe (comando) | Faz | Publica (evento) |
 |---|---|---|
-| `ComandoGerarOrcamento` | gera orçamento (snapshot) | `OrcamentoGerado` |
+| `ComandoGerarOrcamento` | gera orçamento (peças + MO) | `OrcamentoGerado` ou `OrcamentoFalhou` (motivo) |
 | `ComandoCobrarPagamento` | cria cobrança no gateway | `CobrancaCriada` (confirma via webhook) |
 | `ComandoEstornarPagamento` | estorna pagamento | `PagamentoEstornado` |
+
+`OrcamentoFalhou` deixa o orquestrador (OS Service) decidir **retry** e, esgotado,
+**compensar** liberando a reserva de estoque (ver ADR-0005).
 
 Consumer com dedupe por `messageId` e redrive para DLQ.
 
@@ -53,5 +59,6 @@ Consumer com dedupe por `messageId` e redrive para DLQ.
 - [x] Orçamento a partir de itens recebidos (snapshot)
 - [x] Pagamento (máquina de estados) + histórico append-only
 - [x] `PaymentGatewayPort` (fake + Mercado Pago sandbox) + webhook
-- [x] Consumer/publisher da Saga
-- [ ] Orquestração ponta a ponta (Etapa 5)
+- [x] Orçamento com peças (marca) + mão de obra (`SERVICE_COST`); totais por categoria
+- [x] Consumer/publisher da Saga; `OrcamentoFalhou` para retry/compensação
+- [ ] Validação ponta a ponta no ambiente integrado (homologação — manual)
