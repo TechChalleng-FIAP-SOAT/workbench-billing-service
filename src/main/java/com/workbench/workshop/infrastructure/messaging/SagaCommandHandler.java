@@ -38,6 +38,7 @@ public class SagaCommandHandler {
     @SuppressWarnings("unchecked")
     public void handle(MessageEnvelope cmd) {
         UUID serviceOrderId = UUID.fromString(cmd.serviceOrderId());
+        log.info("Comando recebido: type={}, serviceOrderId={}", cmd.type(), serviceOrderId);
         switch (cmd.type()) {
             case "ComandoGerarOrcamento" -> {
                 List<Map<String, Object>> rawParts =
@@ -64,6 +65,8 @@ public class SagaCommandHandler {
 
                 try {
                     Budget budget = generateBudgetUseCase.execute(serviceOrderId, parts, labor);
+                    log.info("Orçamento gerado: budgetId={}, totalPrice={}, serviceOrderId={}",
+                            budget.getId(), budget.getTotalPrice(), serviceOrderId);
                     publisher.publish(MessageEnvelope.of("OrcamentoGerado", cmd.sagaId(), cmd.serviceOrderId(),
                             payloadOf("budgetId", budget.getId(),
                                     "totalParts", budget.getTotalParts(),
@@ -80,11 +83,15 @@ public class SagaCommandHandler {
             }
             case "ComandoCobrarPagamento" -> {
                 Payment payment = paymentUseCases.createPayment(serviceOrderId);
+                log.info("Cobrança criada: gatewayPaymentId={}, serviceOrderId={}",
+                        payment.getGatewayPaymentId(), serviceOrderId);
                 publisher.publish(MessageEnvelope.of("CobrancaCriada", cmd.sagaId(), cmd.serviceOrderId(),
                         payloadOf("gatewayPaymentId", payment.getGatewayPaymentId())));
             }
             case "ComandoEstornarPagamento" -> {
                 Payment payment = paymentUseCases.refund(serviceOrderId);
+                log.info("Pagamento estornado: status={}, serviceOrderId={}",
+                        payment.getStatus().name(), serviceOrderId);
                 publisher.publish(MessageEnvelope.of("PagamentoEstornado", cmd.sagaId(), cmd.serviceOrderId(),
                         payloadOf("status", payment.getStatus().name())));
             }

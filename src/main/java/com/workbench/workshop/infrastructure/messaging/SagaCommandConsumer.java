@@ -2,6 +2,7 @@ package com.workbench.workshop.infrastructure.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -62,9 +63,19 @@ public class SagaCommandConsumer {
                 delete(queueUrl, message);
                 return;
             }
-            handler.handle(cmd);
-            processed.put(cmd.messageId(), Boolean.TRUE);
-            delete(queueUrl, message);
+            // Propaga a correlação da Saga para o MDC: com o encoder JSON, saga_id e
+            // service_order_id viram campos pesquisáveis no Datadog, permitindo
+            // rastrear uma OS ponta a ponta (@saga_id) através dos microsserviços.
+            MDC.put("saga_id", cmd.sagaId());
+            MDC.put("service_order_id", cmd.serviceOrderId());
+            try {
+                handler.handle(cmd);
+                processed.put(cmd.messageId(), Boolean.TRUE);
+                delete(queueUrl, message);
+            } finally {
+                MDC.remove("saga_id");
+                MDC.remove("service_order_id");
+            }
         } catch (Exception e) {
             log.error("Failed to process command; leaving for redrive/DLQ. body={}", message.body(), e);
         }

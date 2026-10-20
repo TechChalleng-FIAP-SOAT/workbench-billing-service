@@ -101,6 +101,9 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
       CLUSTER_NAME: workbench-platform-${{ github.ref_name }}
       IMAGE: ${{ needs.docker-build-push.outputs.image }}
+      # Opcional: sem DD_API_KEY, o install do Datadog Agent é ignorado e a app
+      # sobe sem observabilidade in-cluster (o rollout não é bloqueado).
+      DD_API_KEY: ${{ secrets.DD_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -109,12 +112,67 @@ jobs:
           aws-secret-access-key: ${{ github.ref_name == 'main' && secrets.AWS_SECRET_ACCESS_KEY_MAIN || secrets.AWS_SECRET_ACCESS_KEY_DEVELOP }}
           aws-region: ${{ env.AWS_REGION }}
       - run: aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}"
+
+      # Datadog Agent (DaemonSet) + Cluster Agent antes da app, para que o
+      # admission controller injete o dd-java-agent. Ignorado sem DD_API_KEY.
+      - name: Configurar Helm
+        if: ${{ env.DD_API_KEY != '' }}
+        uses: azure/setup-helm@v4
+      - name: Instalar Datadog Agent (Helm)
+        if: ${{ env.DD_API_KEY != '' }}
+        continue-on-error: true
+        run: |
+          kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic datadog-secret \
+            --namespace datadog \
+            --from-literal api-key="${DD_API_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          helm repo add datadog https://helm.datadoghq.com
+          helm repo update
+          helm upgrade --install datadog datadog/datadog \
+            --namespace datadog \
+            -f k8s/datadog/values.yaml \
+            --set datadog.clusterName="${CLUSTER_NAME}"
+
       - name: Aplicar manifests
         run: |
+          case "${{ github.ref_name }}" in
+            main)    DD_ENV_TAG="production" ;;
+            develop) DD_ENV_TAG="homolog" ;;
+            *)       DD_ENV_TAG="developer" ;;
+          esac
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/configmap.yaml
           kubectl apply -f k8s/secret.yaml
           kubectl apply -f k8s/app.yaml
           kubectl apply -f k8s/hpa.yaml
+          kubectl patch deployment billing-service -n billing-service --type merge \
+            -p "{\"spec\":{\"template\":{\"metadata\":{\"labels\":{\"tags.datadoghq.com/env\":\"${DD_ENV_TAG}\"}}}}}"
           kubectl set image deployment/billing-service billing-service="${IMAGE}" -n billing-service
           kubectl rollout status deployment/billing-service -n billing-service --timeout=300s
+
+  # ---------------------------------------------------------------------------
+  # Datadog config — cria/atualiza o dashboard e os monitores versionados em
+  # datadog/ via API (idempotente por título/nome). Independe do cluster.
+  # Roda em develop/main; ignorado sem DD_API_KEY/DD_APP_KEY.
+  # ---------------------------------------------------------------------------
+  datadog-config:
+    runs-on: ubuntu-latest
+    needs: unit-test
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    env:
+      DD_API_KEY: ${{ secrets.DD_API_KEY }}
+      DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+      DD_SITE: ${{ vars.DD_SITE || 'datadoghq.com' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar credenciais Datadog
+        id: guard
+        run: |
+          if [ -z "${DD_API_KEY}" ] || [ -z "${DD_APP_KEY}" ]; then
+            echo "::warning::DD_API_KEY/DD_APP_KEY ausentes — pulando aplicação de dashboards/monitores."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Aplicar dashboard e monitores (upsert)
+        if: steps.guard.outputs.skip != 'true'
+        run: bash .github/scripts/apply-datadog.sh
