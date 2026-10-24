@@ -1,0 +1,56 @@
+{
+  "info": {
+    "name": "Workbench - Billing Service",
+    "description": "Collection do microsserviço de Orçamento e Pagamento. Consulta o orçamento gerado pela Saga, cria cobrança (Mercado Pago) e recebe o webhook de aprovação/recusa. Variáveis: baseUrl, token, serviceOrderId.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8080"},
+    {"key": "token", "value": ""},
+    {"key": "serviceOrderId", "value": ""}
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{"key": "token", "value": "{{token}}", "type": "string"}]
+  },
+  "item": [
+    {
+      "name": "Budget",
+      "item": [
+        {
+          "name": "Buscar orçamento por OS",
+          "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/budgets/service-order/{{serviceOrderId}}", "host": ["{{baseUrl}}"], "path": ["api", "budgets", "service-order", "{{serviceOrderId}}"]}}
+        }
+      ]
+    },
+    {
+      "name": "Payment",
+      "item": [
+        {
+          "name": "Criar cobrança para a OS (pagamento pendente)",
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/api/payments/service-order/{{serviceOrderId}}", "host": ["{{baseUrl}}"], "path": ["api", "payments", "service-order", "{{serviceOrderId}}"]}}
+        },
+        {
+          "name": "Webhook do gateway (aprovação/recusa)",
+          "request": {
+            "method": "POST",
+            "auth": {"type": "noauth"},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{baseUrl}}/api/payments/webhook", "host": ["{{baseUrl}}"], "path": ["api", "payments", "webhook"]},
+            "body": {"mode": "raw", "raw": "{\n  \"serviceOrderId\": \"{{serviceOrderId}}\",\n  \"status\": \"APPROVED\"\n}"}
+          }
+        },
+        {
+          "name": "Histórico de pagamento da OS",
+          "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/payments/service-order/{{serviceOrderId}}/history", "host": ["{{baseUrl}}"], "path": ["api", "payments", "service-order", "{{serviceOrderId}}", "history"]}}
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {"name": "Health check", "request": {"method": "GET", "auth": {"type": "noauth"}, "url": {"raw": "{{baseUrl}}/actuator/health", "host": ["{{baseUrl}}"], "path": ["actuator", "health"]}}}
+      ]
+    }
+  ]
+}
