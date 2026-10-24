@@ -11,7 +11,7 @@ import java.util.UUID;
  * Pagamento de uma OS (rich domain com máquina de estados).
  *
  * <p>Transições válidas:
- * PENDENTE → APROVADO | RECUSADO; APROVADO → ESTORNADO.
+ * PENDENTE → PAGAMENTO_APROVADO | RECUSADO; PAGAMENTO_APROVADO → ESTORNADO.
  * Transições inválidas lançam {@link InvalidPaymentTransitionException}.
  */
 @Getter
@@ -23,12 +23,14 @@ public class Payment {
     private BigDecimal amount;
     private PaymentStatus status;
     private String gatewayPaymentId;   // id do pagamento no provedor (Mercado Pago)
+    private String checkoutUrl;        // link de pagamento (checkout) para o cliente pagar
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     protected Payment() {}
 
-    public static Payment create(UUID serviceOrderId, Long budgetId, BigDecimal amount, String gatewayPaymentId) {
+    public static Payment create(UUID serviceOrderId, Long budgetId, BigDecimal amount,
+                                 String gatewayPaymentId, String checkoutUrl) {
         Objects.requireNonNull(serviceOrderId, "serviceOrderId is required");
         Objects.requireNonNull(amount, "amount is required");
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -39,12 +41,13 @@ public class Payment {
         p.budgetId = budgetId;
         p.amount = amount;
         p.gatewayPaymentId = gatewayPaymentId;
+        p.checkoutUrl = checkoutUrl;
         p.status = PaymentStatus.PENDENTE;
         return p;
     }
 
     public static Payment reconstitute(Long id, UUID serviceOrderId, Long budgetId, BigDecimal amount,
-                                       PaymentStatus status, String gatewayPaymentId,
+                                       PaymentStatus status, String gatewayPaymentId, String checkoutUrl,
                                        LocalDateTime createdAt, LocalDateTime updatedAt) {
         Payment p = new Payment();
         p.id = id;
@@ -53,14 +56,20 @@ public class Payment {
         p.amount = amount;
         p.status = status;
         p.gatewayPaymentId = gatewayPaymentId;
+        p.checkoutUrl = checkoutUrl;
         p.createdAt = createdAt;
         p.updatedAt = updatedAt;
         return p;
     }
 
     public void approve() {
-        requireStatus(PaymentStatus.PENDENTE, PaymentStatus.APROVADO);
-        this.status = PaymentStatus.APROVADO;
+        requireStatus(PaymentStatus.PENDENTE, PaymentStatus.PAGAMENTO_APROVADO);
+        this.status = PaymentStatus.PAGAMENTO_APROVADO;
+    }
+
+    /** True quando já está aprovado (usado para idempotência do webhook). */
+    public boolean isApproved() {
+        return this.status == PaymentStatus.PAGAMENTO_APROVADO;
     }
 
     public void reject() {
@@ -69,7 +78,7 @@ public class Payment {
     }
 
     public void refund() {
-        requireStatus(PaymentStatus.APROVADO, PaymentStatus.ESTORNADO);
+        requireStatus(PaymentStatus.PAGAMENTO_APROVADO, PaymentStatus.ESTORNADO);
         this.status = PaymentStatus.ESTORNADO;
     }
 

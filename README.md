@@ -165,14 +165,37 @@ automatizado pelo pipeline (`deploy-aws`, quando `USE_AWS=true`) no cluster
 
 ---
 
+## Segurança (JWT)
+
+Defesa em profundidade: o serviço **valida o JWT por conta própria** (Spring Security +
+filtro HS256 com o `JWT_SECRET` compartilhado), inclusive nas chamadas internas — não
+depende do API Gateway. Tokens de staff carregam `roles` (ADMIN/TECHNICIAN); tokens de
+cliente carregam `clientId` → `ROLE_CLIENT`.
+
+Rotas **públicas** (sem token):
+- `GET /actuator/health*`, Swagger/OpenAPI;
+- `POST /api/payments/webhook` — chamado pelo **gateway de pagamento externo** (Mercado
+  Pago), que não envia o nosso JWT.
+
+As consultas (`GET /api/budgets/**`, `GET /api/payments/**`) são liberadas ao cliente
+dono (`ROLE_CLIENT`) e ao staff; as demais rotas exigem ADMIN/TECHNICIAN.
+
+---
+
 ## Referência de endpoints
 
-| Método | Rota | Descrição |
-|---|---|---|
-| GET | `/api/budgets/service-order/{osId}` | Orçamento da OS (peças, MO e totais) |
-| POST | `/api/payments/service-order/{osId}` | Criar cobrança (PENDENTE) |
-| POST | `/api/payments/webhook` | Notificação do gateway (aprova/recusa) |
-| GET | `/api/payments/service-order/{osId}/history` | Histórico de pagamento |
+| Método | Rota | Descrição | Acesso |
+|---|---|---|---|
+| GET | `/api/budgets/service-order/{osId}` | Orçamento da OS (peças, MO e totais) | token |
+| GET | `/api/payments/service-order/{osId}` | Pagamento da OS (status + **checkoutUrl**) | token |
+| POST | `/api/payments/service-order/{osId}` | Criar cobrança (PENDENTE) — normalmente **automática** via Saga | staff |
+| POST | `/api/payments/webhook` | Notificação do gateway (aprova/recusa) | público |
+| GET | `/api/payments/service-order/{osId}/history` | Histórico de pagamento | token |
+
+> **Link de pagamento (checkout):** ao criar a cobrança, o gateway devolve um
+> `checkoutUrl`. Ele é **persistido** e enviado ao cliente por e-mail (via os-service, no
+> evento `CobrancaCriada`). Caso o cliente perca o e-mail, consulta o link em
+> `GET /api/payments/service-order/{osId}` (campo `checkoutUrl`).
 
 ---
 

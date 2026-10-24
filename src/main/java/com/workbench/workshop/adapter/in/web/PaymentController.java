@@ -38,6 +38,14 @@ public class PaymentController {
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/service-order/{serviceOrderId}")
+    @Operation(summary = "Buscar pagamento da OS (inclui gatewayPaymentId para o webhook)")
+    public ResponseEntity<PaymentResponse> findByServiceOrder(@PathVariable UUID serviceOrderId) {
+        return paymentRepository.findByServiceOrderId(serviceOrderId)
+                .map(p -> ResponseEntity.ok(PaymentResponse.from(p)))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/service-order/{serviceOrderId}/history")
     @Operation(summary = "Histórico de pagamento da OS")
     public ResponseEntity<List<HistoryResponse>> history(@PathVariable UUID serviceOrderId) {
@@ -48,10 +56,10 @@ public class PaymentController {
     public record WebhookPayload(String gatewayPaymentId, boolean approved) {}
 
     public record PaymentResponse(Long id, UUID serviceOrderId, BigDecimal amount,
-                                  String status, String gatewayPaymentId) {
+                                  String status, String gatewayPaymentId, String checkoutUrl) {
         static PaymentResponse from(Payment p) {
             return new PaymentResponse(p.getId(), p.getServiceOrderId(), p.getAmount(),
-                    p.getStatus().name(), p.getGatewayPaymentId());
+                    p.getStatus().name(), p.getGatewayPaymentId(), p.getCheckoutUrl());
         }
     }
 

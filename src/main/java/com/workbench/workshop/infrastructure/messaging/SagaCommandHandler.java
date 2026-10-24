@@ -86,7 +86,8 @@ public class SagaCommandHandler {
                 log.info("Cobrança criada: gatewayPaymentId={}, serviceOrderId={}",
                         payment.getGatewayPaymentId(), serviceOrderId);
                 publisher.publish(MessageEnvelope.of("CobrancaCriada", cmd.sagaId(), cmd.serviceOrderId(),
-                        payloadOf("gatewayPaymentId", payment.getGatewayPaymentId())));
+                        payloadOf("gatewayPaymentId", payment.getGatewayPaymentId(),
+                                "checkoutUrl", payment.getCheckoutUrl())));
             }
             case "ComandoEstornarPagamento" -> {
                 Payment payment = paymentUseCases.refund(serviceOrderId);

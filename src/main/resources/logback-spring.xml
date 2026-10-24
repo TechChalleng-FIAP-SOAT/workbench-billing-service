@@ -18,7 +18,25 @@
         </encoder>
     </appender>
 
+    <!-- Arquivo JSON por serviço, para coleta local pelo Datadog Agent (dev).
+         Configurável por LOG_JSON_FILE. Em container/produção a coleta é via stdout. -->
+    <appender name="JSON_FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${LOG_JSON_FILE:-/tmp/workbench/billing-service.log}</file>
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp/>
+                <logLevel/>
+                <loggerName/>
+                <threadName/>
+                <message/>
+                <mdc/>
+                <stackTrace/>
+            </providers>
+        </encoder>
+    </appender>
+
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="JSON_FILE"/>
     </root>
 </configuration>

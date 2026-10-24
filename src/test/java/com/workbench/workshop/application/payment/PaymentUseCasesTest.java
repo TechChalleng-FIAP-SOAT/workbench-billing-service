@@ -1,6 +1,7 @@
 package com.workbench.workshop.application.payment;
 
 import com.workbench.workshop.application.budget.port.out.BudgetRepository;
+import com.workbench.workshop.application.payment.port.out.PaymentEventPort;
 import com.workbench.workshop.application.payment.port.out.PaymentGatewayPort;
 import com.workbench.workshop.application.payment.port.out.PaymentRepository;
 import com.workbench.workshop.domain.budget.Budget;
@@ -24,6 +25,7 @@ class PaymentUseCasesTest {
     private PaymentRepository paymentRepository;
     private BudgetRepository budgetRepository;
     private PaymentGatewayPort gateway;
+    private PaymentEventPort paymentEventPort;
     private PaymentUseCases useCases;
 
     private final UUID osId = UUID.randomUUID();
@@ -33,7 +35,8 @@ class PaymentUseCasesTest {
         paymentRepository = mock(PaymentRepository.class);
         budgetRepository = mock(BudgetRepository.class);
         gateway = mock(PaymentGatewayPort.class);
-        useCases = new PaymentUseCases(paymentRepository, budgetRepository, gateway);
+        paymentEventPort = mock(PaymentEventPort.class);
+        useCases = new PaymentUseCases(paymentRepository, budgetRepository, gateway, paymentEventPort);
         when(paymentRepository.save(any())).thenAnswer(i -> i.getArgument(0));
     }
 
@@ -66,28 +69,45 @@ class PaymentUseCasesTest {
 
     @Test
     void webhookApprovesPayment() {
-        Payment pending = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-99");
+        Payment pending = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-99", "http://checkout/GW-99");
         when(paymentRepository.findByGatewayPaymentId("GW-99")).thenReturn(Optional.of(pending));
 
         Payment result = useCases.handleGatewayNotification("GW-99", true);
 
-        assertEquals(PaymentStatus.APROVADO, result.getStatus());
+        assertEquals(PaymentStatus.PAGAMENTO_APROVADO, result.getStatus());
         verify(paymentRepository).appendHistory(any());
+        verify(paymentEventPort).paymentConfirmed(osId);
     }
 
     @Test
     void webhookRejectsPayment() {
-        Payment pending = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-99");
+        Payment pending = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-99", "http://checkout/GW-99");
         when(paymentRepository.findByGatewayPaymentId("GW-99")).thenReturn(Optional.of(pending));
 
         Payment result = useCases.handleGatewayNotification("GW-99", false);
 
         assertEquals(PaymentStatus.RECUSADO, result.getStatus());
+        verify(paymentEventPort).paymentFailed(eq(osId), any());
+    }
+
+    @Test
+    void webhookApproveIsIdempotent() {
+        Payment approved = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-99", "http://checkout/GW-99");
+        approved.approve(); // já aprovado
+        when(paymentRepository.findByGatewayPaymentId("GW-99")).thenReturn(Optional.of(approved));
+
+        // 2ª notificação de aprovação (reenvio do gateway): não falha e não reprocessa.
+        Payment result = useCases.handleGatewayNotification("GW-99", true);
+
+        assertEquals(PaymentStatus.PAGAMENTO_APROVADO, result.getStatus());
+        verify(paymentRepository, never()).save(any());
+        verify(paymentRepository, never()).appendHistory(any());
+        verify(paymentEventPort, never()).paymentConfirmed(any());
     }
 
     @Test
     void refundEstornaPagamentoAprovado() {
-        Payment approved = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-99");
+        Payment approved = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-99", "http://checkout/GW-99");
         approved.approve();
         when(paymentRepository.findByServiceOrderId(osId)).thenReturn(Optional.of(approved));
 
