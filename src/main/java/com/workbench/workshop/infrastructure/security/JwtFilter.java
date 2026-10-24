@@ -47,12 +47,21 @@ public class JwtFilter extends OncePerRequestFilter {
             }
             var authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication != null) {
-                MDC.put(USER, authentication.getName());
+                MDC.put(USER, mask(authentication.getName()));
             }
             filterChain.doFilter(request, response);
         } finally {
             MDC.remove(USER);
         }
+    }
+
+    /** Mascara o subject (CPF do cliente) antes do MDC/log — OWASP A09. E-mails passam. */
+    static String mask(String subject) {
+        if (subject == null || subject.contains("@") || subject.length() < 6) {
+            return subject;
+        }
+        return subject.substring(0, 3) + "*".repeat(subject.length() - 5)
+                + subject.substring(subject.length() - 2);
     }
 
     private void authenticate(Claims claims) {

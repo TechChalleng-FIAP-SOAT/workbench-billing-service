@@ -6,6 +6,7 @@ import com.workbench.workshop.domain.payment.Payment;
 import com.workbench.workshop.domain.payment.PaymentHistory;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,7 +34,7 @@ public class PaymentController {
 
     @PostMapping("/webhook")
     @Operation(summary = "Webhook do gateway (notificação de aprovação/recusa)")
-    public ResponseEntity<Void> webhook(@RequestBody WebhookPayload payload) {
+    public ResponseEntity<Void> webhook(@Valid @RequestBody WebhookPayload payload) {
         paymentUseCases.handleGatewayNotification(payload.gatewayPaymentId(), payload.approved());
         return ResponseEntity.ok().build();
     }
@@ -53,7 +54,7 @@ public class PaymentController {
                 .map(HistoryResponse::from).toList());
     }
 
-    public record WebhookPayload(String gatewayPaymentId, boolean approved) {}
+    public record WebhookPayload(@jakarta.validation.constraints.NotBlank String gatewayPaymentId, boolean approved) {}
 
     public record PaymentResponse(Long id, UUID serviceOrderId, BigDecimal amount,
                                   String status, String gatewayPaymentId, String checkoutUrl) {

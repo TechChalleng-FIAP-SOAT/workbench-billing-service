@@ -180,6 +180,18 @@ Rotas **públicas** (sem token):
 As consultas (`GET /api/budgets/**`, `GET /api/payments/**`) são liberadas ao cliente
 dono (`ROLE_CLIENT`) e ao staff; as demais rotas exigem ADMIN/TECHNICIAN.
 
+### Boas práticas OWASP aplicadas
+- **A01/A07 (acesso):** autorização por role em todas as rotas; JWT validado por serviço.
+- **A03 (injeção/validação):** `@Valid` + Bean Validation nos DTOs de entrada; acesso a
+  dados via Spring Data JPA parametrizado (sem concatenação de SQL).
+- **A05 (misconfiguration):** headers `X-Frame-Options: DENY` e `X-Content-Type-Options:
+  nosniff`; `k8s/secret.yaml` com **placeholders** (`REPLACE_ME`) — segredos reais vêm do
+  secret manager no deploy, nunca versionados.
+- **A09 (logs):** o CPF do cliente é mascarado no log (MDC) — nunca registrado por inteiro.
+
+> Hotspot SonarCloud `java:S4502` (CSRF disabled) é marcado **Safe**: API REST stateless
+> com JWT, sem cookie de sessão.
+
 ---
 
 ## Referência de endpoints
