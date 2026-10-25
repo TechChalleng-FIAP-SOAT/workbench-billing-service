@@ -129,6 +129,15 @@ class BillingIntegrationTest {
     }
 
     @Test
+    void webhookWithBlankGatewayIdReturns400() throws Exception {
+        // Bean Validation (OWASP A03): gatewayPaymentId em branco → 400 do handler.
+        mockMvc.perform(post("/api/payments/webhook")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"gatewayPaymentId\":\"\",\"approved\":true}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void healthIsPublic() throws Exception {
         mockMvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }

@@ -32,6 +32,9 @@ public class SecurityConfig {
 
     public SecurityConfig(JwtFilter jwtFilter) { this.jwtFilter = jwtFilter; }
 
+    // S4502 (CSRF): seguro desabilitar — API REST stateless com JWT (sem cookie de sessão),
+    // logo não há vetor de CSRF. Suprimido com justificativa em vez de review manual no Sonar.
+    @SuppressWarnings("java:S4502")
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
