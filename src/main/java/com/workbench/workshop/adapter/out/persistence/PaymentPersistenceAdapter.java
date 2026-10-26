@@ -28,6 +28,7 @@ public class PaymentPersistenceAdapter implements PaymentRepository {
         entity.setAmount(payment.getAmount());
         entity.setStatus(payment.getStatus());
         entity.setGatewayPaymentId(payment.getGatewayPaymentId());
+        entity.setCheckoutUrl(payment.getCheckoutUrl());
         return toDomain(paymentJpaRepository.save(entity));
     }
 
@@ -67,6 +68,6 @@ public class PaymentPersistenceAdapter implements PaymentRepository {
 
     private Payment toDomain(PaymentEntity e) {
         return Payment.reconstitute(e.getId(), e.getServiceOrderId(), e.getBudgetId(), e.getAmount(),
-                e.getStatus(), e.getGatewayPaymentId(), e.getCreatedAt(), e.getUpdatedAt());
+                e.getStatus(), e.getGatewayPaymentId(), e.getCheckoutUrl(), e.getCreatedAt(), e.getUpdatedAt());
     }
 }

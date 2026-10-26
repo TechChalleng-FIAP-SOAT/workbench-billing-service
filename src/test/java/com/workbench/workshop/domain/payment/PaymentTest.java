@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PaymentTest {
 
     private Payment pending() {
-        return Payment.create(UUID.randomUUID(), 1L, new BigDecimal("100.00"), "GW-1");
+        return Payment.create(UUID.randomUUID(), 1L, new BigDecimal("100.00"), "GW-1", "http://checkout/GW-1");
     }
 
     @Test
@@ -23,14 +23,14 @@ class PaymentTest {
     @Test
     void createRejectsNonPositiveAmount() {
         assertThrows(IllegalArgumentException.class,
-                () -> Payment.create(UUID.randomUUID(), 1L, BigDecimal.ZERO, "GW"));
+                () -> Payment.create(UUID.randomUUID(), 1L, BigDecimal.ZERO, "GW", "http://checkout/GW"));
     }
 
     @Test
     void approveFromPendente() {
         Payment p = pending();
         p.approve();
-        assertEquals(PaymentStatus.APROVADO, p.getStatus());
+        assertEquals(PaymentStatus.PAGAMENTO_APROVADO, p.getStatus());
     }
 
     @Test

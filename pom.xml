@@ -19,8 +19,9 @@
 		<jacoco.version>0.8.14</jacoco.version>
 		<aws.sdk.version>2.29.1</aws.sdk.version>
 		<sonar.maven.plugin.version>5.5.0.6356</sonar.maven.plugin.version>
-		<sonar.projectKey>billing-service</sonar.projectKey>
-		<sonar.projectName>billing-service</sonar.projectName>
+		<sonar.organization>techchalleng-fiap-soat</sonar.organization>
+		<sonar.projectKey>TechChalleng-FIAP-SOAT_workbench-billing-service</sonar.projectKey>
+		<sonar.projectName>workbench-billing-service</sonar.projectName>
 		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
 		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
 	</properties>
@@ -45,7 +46,28 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-api</artifactId>
+			<version>0.13.0</version>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-impl</artifactId>
+			<version>0.13.0</version>
+			<scope>runtime</scope>
+		</dependency>
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt-jackson</artifactId>
+			<version>0.13.0</version>
+			<scope>runtime</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

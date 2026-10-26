@@ -76,7 +76,7 @@ class SagaCommandHandlerTest {
 
     @Test
     void cobrarPagamentoPublishesCobrancaCriada() {
-        Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1");
+        Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1", "http://checkout/GW-1");
         when(paymentUseCases.createPayment(osId)).thenReturn(p);
 
         handler.handle(cmd("ComandoCobrarPagamento", Map.of()));
@@ -88,7 +88,7 @@ class SagaCommandHandlerTest {
 
     @Test
     void estornarPublishesPagamentoEstornado() {
-        Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1");
+        Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1", "http://checkout/GW-1");
         p.approve();
         p.refund();
         when(paymentUseCases.refund(osId)).thenReturn(p);

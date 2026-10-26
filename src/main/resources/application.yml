@@ -48,6 +48,11 @@ management:
 server:
   port: 8080
 
+# JWT (HS256) — mesmo secret compartilhado pela plataforma (Lambda/os-service).
+# O Billing valida o token; não o emite.
+jwt:
+  secret: ${JWT_SECRET:akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa}
+
 # Mercado Pago (pagamento).
 #  - provider=fake (default): adapter determinístico, offline (testes/dev).
 #  - provider=mercadopago: integra o sandbox (requer access-token de teste).
