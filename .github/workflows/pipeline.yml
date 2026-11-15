@@ -177,6 +177,18 @@ jobs:
           esac
           kubectl apply -f k8s/namespace.yaml
           kubectl apply -f k8s/configmap.yaml
+          # Valores que dependem da conta, do ambiente e do commit (nada disso fica no
+          # repositório). A versão do Datadog é a tag da imagem, para comparar deploys.
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          DD_VERSION_TAG="${IMAGE##*:}"
+          kubectl create configmap billing-service-runtime -n billing-service \
+            --from-literal DD_ENV="${DD_ENV_TAG}" \
+            --from-literal DD_VERSION="${DD_VERSION_TAG}" \
+            --from-literal MESSAGING_ENABLED="true" \
+            --from-literal AWS_REGION="${AWS_REGION}" \
+            --from-literal BILLING_EVENTS_TOPIC_ARN="arn:aws:sns:${AWS_REGION}:${ACCOUNT_ID}:workbench-billing-events" \
+            --from-literal BILLING_COMMANDS_QUEUE_URL="https://sqs.${AWS_REGION}.amazonaws.com/${ACCOUNT_ID}/workbench-billing-commands-queue" \
+            --dry-run=client -o yaml | kubectl apply -f -
           # Secret com os valores reais (no lugar do k8s/secret.yaml, que só tem
           # placeholders). Vem depois do ConfigMap no envFrom, então as chaves daqui
           # prevalecem sobre as do ConfigMap.
@@ -199,7 +211,9 @@ jobs:
           kubectl delete deployment/billing-db service/billing-db -n billing-service --ignore-not-found
           # A imagem do commit entra no manifesto antes do apply: um rollout só, sem passar
           # pelo placeholder REPLACE_IMAGE.
-          sed "s#REPLACE_IMAGE#${IMAGE}#" k8s/app.yaml | kubectl apply -f -
+          sed -e "s#REPLACE_IMAGE#${IMAGE}#" \
+              -e "s#tags.datadoghq.com/version: \"1.0.0\"#tags.datadoghq.com/version: \"${DD_VERSION_TAG}\"#" \
+              k8s/app.yaml | kubectl apply -f -
           kubectl apply -f k8s/hpa.yaml
           kubectl patch deployment billing-service -n billing-service --type merge \
             -p "{\"spec\":{\"template\":{\"metadata\":{\"labels\":{\"tags.datadoghq.com/env\":\"${DD_ENV_TAG}\"}}}}}"

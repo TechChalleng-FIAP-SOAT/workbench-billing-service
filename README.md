@@ -111,6 +111,14 @@ por `messageId` e redrive para **DLQ**. Nomes e campos seguem o contrato execut�
 
 ---
 
+## Por que este banco
+
+**PostgreSQL**, porque é dinheiro: orçamento, itens, pagamento e histórico precisam de transação ACID, `NUMERIC` exato e unicidade (um pagamento por OS). A criação da cobrança trava a linha do orçamento (`SELECT ... FOR UPDATE`) para duas réplicas não cobrarem duas vezes.
+
+As demais decisões (MongoDB no execution, Saga orquestrada, SNS/SQS, EKS, Lambda…) estão respondidas uma a uma em `workbench-technical-documentation/01 - Arquitetura/Decisoes de Arquitetura.md`, com links para as ADRs.
+
+---
+
 ## Arquitetura da aplicação (hexagonal)
 
 ```
