@@ -8,13 +8,15 @@ import java.util.UUID;
  * finalizar a OS (PagamentoConfirmado → PAGO/ENTREGUE) ou retê-la (PagamentoFalhou).
  *
  * <p>Implementações: SNS (quando {@code messaging.enabled=true}) ou no-op (dev/testes
- * sem broker). O {@code sagaId} é o id da OS (uma Saga por OS).
+ * sem broker). O {@code sagaId} é o da rodada que pediu a cobrança
+ * ({@link com.workbench.workshop.domain.payment.Payment#sagaIdForEvents()}): o
+ * orquestrador descarta resultado de outra rodada.
  */
 public interface PaymentEventPort {
 
     /** Pagamento aprovado pelo gateway → publica {@code PagamentoConfirmado}. */
-    void paymentConfirmed(UUID serviceOrderId);
+    void paymentConfirmed(UUID serviceOrderId, String sagaId);
 
     /** Pagamento recusado pelo gateway → publica {@code PagamentoFalhou}. */
-    void paymentFailed(UUID serviceOrderId, String reason);
+    void paymentFailed(UUID serviceOrderId, String sagaId, String reason);
 }

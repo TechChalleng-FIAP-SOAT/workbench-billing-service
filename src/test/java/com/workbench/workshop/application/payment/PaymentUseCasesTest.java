@@ -128,6 +128,43 @@ class PaymentUseCasesTest {
     }
 
     @Test
+    void chargeFromTheSagaKeepsItsRunAndThePaymentResultUsesIt() {
+        // Regressão: o resultado saía com o id da OS e o orquestrador o descartava como
+        // "evento de outra rodada" (ADR-0008) — a OS ficava em PAGAMENTO_PENDENTE.
+        when(budgetRepository.lockByServiceOrderId(osId)).thenReturn(Optional.of(budget()));
+        when(gateway.createCharge(eq(osId.toString()), any()))
+                .thenReturn(new PaymentGatewayPort.GatewayCharge("GW-99", "http://checkout"));
+
+        Payment charged = createPayment.execute(osId, "rodada-2");
+        assertEquals("rodada-2", charged.getSagaId());
+
+        when(paymentRepository.findByGatewayPaymentId("GW-99")).thenReturn(Optional.of(charged));
+        handleNotification.execute("GW-99", true);
+
+        verify(paymentEventPort).paymentConfirmed(osId, "rodada-2");
+    }
+
+    @Test
+    void newChargeAfterRejectionMovesToTheCurrentRun() {
+        Payment rejected = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-1", "http://checkout/1");
+        rejected.bindToSaga("rodada-1");
+        rejected.reject();
+        when(paymentRepository.findByServiceOrderId(osId)).thenReturn(Optional.of(rejected));
+        when(gateway.createCharge(any(), any())).thenReturn(new PaymentGatewayPort.GatewayCharge("GW-2", "http://checkout/2"));
+
+        Payment reopened = createPayment.execute(osId, "rodada-2");
+
+        assertEquals("rodada-2", reopened.getSagaId());
+        assertEquals("rodada-2", reopened.sagaIdForEvents());
+    }
+
+    @Test
+    void paymentWithoutRunFallsBackToTheServiceOrderId() {
+        Payment legacy = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-1", "http://checkout/1");
+        assertEquals(osId.toString(), legacy.sagaIdForEvents());
+    }
+
+    @Test
     void webhookApprovesPayment() {
         Payment pending = Payment.create(osId, 1L, new BigDecimal("150.00"), "GW-99", "http://checkout/GW-99");
         when(paymentRepository.findByGatewayPaymentId("GW-99")).thenReturn(Optional.of(pending));
@@ -136,7 +173,7 @@ class PaymentUseCasesTest {
 
         assertEquals(PaymentStatus.PAGAMENTO_APROVADO, result.getStatus());
         verify(paymentRepository).appendHistory(any());
-        verify(paymentEventPort).paymentConfirmed(osId);
+        verify(paymentEventPort).paymentConfirmed(osId, osId.toString());
     }
 
     @Test
@@ -147,7 +184,7 @@ class PaymentUseCasesTest {
         Payment result = handleNotification.execute("GW-99", false);
 
         assertEquals(PaymentStatus.RECUSADO, result.getStatus());
-        verify(paymentEventPort).paymentFailed(eq(osId), any());
+        verify(paymentEventPort).paymentFailed(eq(osId), eq(osId.toString()), any());
     }
 
     @Test
@@ -162,7 +199,7 @@ class PaymentUseCasesTest {
         assertEquals(PaymentStatus.PAGAMENTO_APROVADO, result.getStatus());
         verify(paymentRepository, never()).save(any());
         verify(paymentRepository, never()).appendHistory(any());
-        verify(paymentEventPort, never()).paymentConfirmed(any());
+        verify(paymentEventPort, never()).paymentConfirmed(any(), any());
     }
 
     @Test
@@ -173,7 +210,7 @@ class PaymentUseCasesTest {
         Payment result = reconcilePayment.execute(pending);
 
         assertEquals(PaymentStatus.PAGAMENTO_APROVADO, result.getStatus());
-        verify(paymentEventPort).paymentConfirmed(osId);
+        verify(paymentEventPort).paymentConfirmed(osId, osId.toString());
     }
 
     @Test
@@ -184,7 +221,7 @@ class PaymentUseCasesTest {
         Payment result = reconcilePayment.execute(pending);
 
         assertEquals(PaymentStatus.RECUSADO, result.getStatus());
-        verify(paymentEventPort).paymentFailed(eq(osId), any());
+        verify(paymentEventPort).paymentFailed(eq(osId), eq(osId.toString()), any());
     }
 
     @Test

@@ -82,7 +82,7 @@ class BillingSagaContractTest {
 
     @Test
     void consumesChargePaymentAndPublishesChargeCreated() {
-        when(createPayment.execute(osId)).thenReturn(
+        when(createPayment.execute(eq(osId), any())).thenReturn(
                 Payment.create(osId, 1L, new BigDecimal("250.00"), "PREF-1", "https://checkout/PREF-1"));
 
         handler.handle(command(SagaMessages.CHARGE_PAYMENT));
@@ -106,10 +106,10 @@ class BillingSagaContractTest {
     void paymentEventsConformToContract() {
         var adapter = new SnsPaymentEventAdapter(publisher);
 
-        adapter.paymentConfirmed(osId);
+        adapter.paymentConfirmed(osId, osId.toString());
         assertConforms(lastPublished());
 
-        adapter.paymentFailed(osId, "pagamento recusado pelo gateway");
+        adapter.paymentFailed(osId, osId.toString(), "pagamento recusado pelo gateway");
         assertConforms(lastPublished());
     }
 

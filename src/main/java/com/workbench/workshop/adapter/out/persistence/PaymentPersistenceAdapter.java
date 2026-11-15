@@ -32,6 +32,7 @@ public class PaymentPersistenceAdapter implements PaymentRepository {
         entity.setCheckoutUrl(payment.getCheckoutUrl());
         entity.setGatewayTransactionId(payment.getGatewayTransactionId());
         entity.setAttempt(payment.getAttempt());
+        entity.setSagaId(payment.getSagaId());
         return toDomain(paymentJpaRepository.save(entity));
     }
 
@@ -71,8 +72,10 @@ public class PaymentPersistenceAdapter implements PaymentRepository {
     }
 
     private Payment toDomain(PaymentEntity e) {
-        return Payment.reconstitute(e.getId(), e.getServiceOrderId(), e.getBudgetId(), e.getAmount(),
+        Payment payment = Payment.reconstitute(e.getId(), e.getServiceOrderId(), e.getBudgetId(), e.getAmount(),
                 e.getStatus(), e.getGatewayPaymentId(), e.getCheckoutUrl(), e.getGatewayTransactionId(), e.getAttempt(),
                 e.getCreatedAt(), e.getUpdatedAt());
+        payment.bindToSaga(e.getSagaId());
+        return payment;
     }
 }

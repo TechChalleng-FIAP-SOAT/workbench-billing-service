@@ -126,10 +126,12 @@ class SagaCommandHandlerTest {
     @Test
     void chargePaymentPublishesChargeCreated() {
         Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1", "http://checkout/GW-1");
-        when(createPayment.execute(osId)).thenReturn(p);
+        when(createPayment.execute(osId, "saga-1")).thenReturn(p);
 
         handler.handle(cmd("ComandoCobrarPagamento", Map.of()));
 
+        // A rodada do comando vai para a cobrança (volta no PagamentoConfirmado).
+        verify(createPayment).execute(osId, "saga-1");
         ArgumentCaptor<MessageEnvelope> captor = ArgumentCaptor.forClass(MessageEnvelope.class);
         verify(publisher).publish(captor.capture());
         assertEquals("CobrancaCriada", captor.getValue().type());

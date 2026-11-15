@@ -38,9 +38,10 @@ class PaymentDecisionRecorder {
         // o job de consulta tenta de novo; um evento repetido é descartado pelo
         // orquestrador (só aceita PagamentoConfirmado em AGUARDANDO_PAGAMENTO).
         if (approved) {
-            paymentEventPort.paymentConfirmed(saved.getServiceOrderId());
+            paymentEventPort.paymentConfirmed(saved.getServiceOrderId(), saved.sagaIdForEvents());
         } else {
-            paymentEventPort.paymentFailed(saved.getServiceOrderId(), "pagamento recusado pelo gateway");
+            paymentEventPort.paymentFailed(saved.getServiceOrderId(), saved.sagaIdForEvents(),
+                    "pagamento recusado pelo gateway");
         }
         return saved;
     }

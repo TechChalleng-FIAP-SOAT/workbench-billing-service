@@ -48,7 +48,7 @@ public class SagaCommandHandler {
         switch (cmd.type()) {
             case GENERATE_BUDGET -> generateBudget(cmd, serviceOrderId);
             case CHARGE_PAYMENT -> {
-                Payment payment = createPayment.execute(serviceOrderId);
+                Payment payment = createPayment.execute(serviceOrderId, cmd.sagaId());
                 log.info("Cobrança criada: gatewayPaymentId={}, serviceOrderId={}",
                         payment.getGatewayPaymentId(), serviceOrderId);
                 reply(cmd, CHARGE_CREATED, payloadOf("gatewayPaymentId", payment.getGatewayPaymentId(),

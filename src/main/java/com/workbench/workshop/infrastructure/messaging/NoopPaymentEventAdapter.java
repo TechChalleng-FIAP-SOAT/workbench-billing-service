@@ -17,12 +17,12 @@ import java.util.UUID;
 public class NoopPaymentEventAdapter implements PaymentEventPort {
 
     @Override
-    public void paymentConfirmed(UUID serviceOrderId) {
+    public void paymentConfirmed(UUID serviceOrderId, String sagaId) {
         log.info("[noop] PagamentoConfirmado não publicado (messaging desligado): serviceOrderId={}", serviceOrderId);
     }
 
     @Override
-    public void paymentFailed(UUID serviceOrderId, String reason) {
+    public void paymentFailed(UUID serviceOrderId, String sagaId, String reason) {
         log.info("[noop] PagamentoFalhou não publicado (messaging desligado): serviceOrderId={}, reason={}",
                 serviceOrderId, reason);
     }

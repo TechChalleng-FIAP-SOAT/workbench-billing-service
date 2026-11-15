@@ -31,6 +31,7 @@ public class Payment {
     private String checkoutUrl;           // link de pagamento para o cliente
     private String gatewayTransactionId;  // id do pagamento aprovado no provedor (usado no estorno)
     private int attempt = 1;              // nº da cobrança (sobe a cada nova cobrança após recusa)
+    private String sagaId;                // rodada da Saga que pediu a cobrança (nulo = id da OS)
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -115,6 +116,24 @@ public class Payment {
         this.gatewayPaymentId = newGatewayPaymentId;
         this.checkoutUrl = newCheckoutUrl;
         this.attempt++;
+    }
+
+    /**
+     * Liga a cobrança à rodada da Saga que a pediu ({@code sagaId} do ComandoCobrarPagamento).
+     * Vazio não muda nada.
+     */
+    public void bindToSaga(String sagaId) {
+        if (sagaId != null && !sagaId.isBlank()) {
+            this.sagaId = sagaId;
+        }
+    }
+
+    /**
+     * {@code sagaId} a usar no resultado do pagamento. O orquestrador descarta resposta de
+     * outra rodada; sem rodada gravada (cobrança antiga ou criada pela API), é o id da OS.
+     */
+    public String sagaIdForEvents() {
+        return sagaId != null ? sagaId : serviceOrderId.toString();
     }
 
     public void refund() {
