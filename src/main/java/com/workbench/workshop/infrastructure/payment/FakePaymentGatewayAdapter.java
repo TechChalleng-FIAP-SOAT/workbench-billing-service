@@ -9,14 +9,14 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Gateway de pagamento FALSO (default, {@code payment.provider=fake}).
+ * Gateway de pagamento FALSO ({@code payment.provider=fake}: perfil local e testes).
  *
  * <p>Determinístico e offline — usado em testes/dev e para demonstrar a Saga sem
  * depender do Mercado Pago. Gera um id de cobrança sintético; o resultado
  * (aprovado/recusado) é simulado chamando o webhook manualmente.
  */
 @Component
-@ConditionalOnProperty(prefix = "payment", name = "provider", havingValue = "fake", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "payment", name = "provider", havingValue = "fake")
 @Slf4j
 public class FakePaymentGatewayAdapter implements PaymentGatewayPort {
 

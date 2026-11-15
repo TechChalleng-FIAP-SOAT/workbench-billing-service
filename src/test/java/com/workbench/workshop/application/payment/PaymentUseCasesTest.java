@@ -65,7 +65,7 @@ class PaymentUseCasesTest {
 
     @Test
     void createPaymentChargesGatewayAndRecordsPending() {
-        when(budgetRepository.findByServiceOrderId(osId)).thenReturn(Optional.of(budget()));
+        when(budgetRepository.lockByServiceOrderId(osId)).thenReturn(Optional.of(budget()));
         when(gateway.createCharge(eq(osId.toString()), any()))
                 .thenReturn(new PaymentGatewayPort.GatewayCharge("GW-99", "http://checkout"));
 
@@ -123,7 +123,7 @@ class PaymentUseCasesTest {
 
     @Test
     void createPaymentFailsWithoutBudget() {
-        when(budgetRepository.findByServiceOrderId(osId)).thenReturn(Optional.empty());
+        when(budgetRepository.lockByServiceOrderId(osId)).thenReturn(Optional.empty());
         assertThrows(NoSuchElementException.class, () -> createPayment.execute(osId));
     }
 

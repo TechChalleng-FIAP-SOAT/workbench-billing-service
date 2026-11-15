@@ -54,6 +54,11 @@ public class BudgetPersistenceAdapter implements BudgetRepository {
         return budgetJpaRepository.findByServiceOrderId(serviceOrderId).map(this::toDomain);
     }
 
+    @Override
+    public Optional<Budget> lockByServiceOrderId(UUID serviceOrderId) {
+        return budgetJpaRepository.lockByServiceOrderId(serviceOrderId).map(this::toDomain);
+    }
+
     private Budget toDomain(BudgetEntity e) {
         List<BudgetItem> items = budgetItemJpaRepository.findByBudgetId(e.getId()).stream()
                 .map(this::itemToDomain).toList();

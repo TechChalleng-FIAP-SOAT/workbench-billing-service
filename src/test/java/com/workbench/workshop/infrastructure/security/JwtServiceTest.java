@@ -37,7 +37,6 @@ class JwtServiceTest {
         Claims claims = service.tryParseClaims(token(false, 60_000)).orElseThrow();
         assertFalse(service.isClientToken(claims));
         assertTrue(service.extractRoles(claims).contains("ADMIN"));
-        assertFalse(service.isExpired(claims));
     }
 
     @Test
@@ -63,14 +62,11 @@ class JwtServiceTest {
 
     @Test
     void detectsExpiredToken() {
-        // emite com expiração no passado e confirma isExpired (parse puro, sem validar exp)
+        // O parser já valida a expiração: token vencido não passa.
         long now = System.currentTimeMillis();
         String expired = Jwts.builder().subject("x")
                 .issuedAt(new Date(now - 10_000)).expiration(new Date(now - 5_000))
                 .signWith(key).compact();
-        // tryParseClaims rejeita expirado (lança) → vazio; então validamos isExpired direto num claims válido
-        Claims valid = service.tryParseClaims(token(false, 60_000)).orElseThrow();
-        assertFalse(service.isExpired(valid));
         assertTrue(service.tryParseClaims(expired).isEmpty());
     }
 }

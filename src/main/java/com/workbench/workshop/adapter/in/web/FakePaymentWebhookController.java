@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/payments")
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "payment", name = "provider", havingValue = "fake", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "payment", name = "provider", havingValue = "fake")
 @Tag(name = "Payment", description = "Pagamento (Mercado Pago) e histórico")
 public class FakePaymentWebhookController {
 

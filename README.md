@@ -162,7 +162,7 @@ pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início
 
 | Tecnologia | Finalidade |
 |---|---|
-| Java 21 + Spring Boot 4.0.5 | Framework web e DI |
+| Java 21 + Spring Boot 4.0.9 | Framework web e DI |
 | PostgreSQL 16 + Flyway | Banco próprio (SQL) + migrations |
 | AWS SNS/SQS (SDK v2) | Mensageria da Saga + DLQ |
 | Mercado Pago (REST) | Gateway de pagamento (via porta) |
@@ -176,17 +176,24 @@ pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início
 ## Como executar localmente
 
 ```bash
-./mvnw spring-boot:run
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
+
+> **Sem valores padrão para segredos.** Fora do perfil `local` (`JWT_SECRET`, a senha do banco e `PAYMENT_PROVIDER`) são
+> obrigatórios: sem eles o serviço não sobe. O perfil `local` (`application-local.yml`)
+> traz os valores de desenvolvimento e é ativado pelo compose do `workbench-messaging`.
 
 | Variável | Default | Descrição |
 |---|---|---|
-| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Postgres local | Banco próprio do Billing |
-| `JWT_SECRET` | valor de dev | Segredo HS256 compartilhado |
-| `PAYMENT_PROVIDER` | `fake` | `fake` (local, webhook simulado) ou `mercadopago` (AWS, job de consulta) |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` | Postgres local | Banco próprio do Billing |
+| `SPRING_DATASOURCE_PASSWORD` | — (obrigatório; dev no perfil `local`) | Senha do banco |
+| `JWT_SECRET` | — (obrigatório; dev no perfil `local`) | Segredo HS256 compartilhado |
+| `PAYMENT_PROVIDER` | — (obrigatório; `fake` no perfil `local`) | `fake` (webhook simulado, sem assinatura — só local/testes) ou `mercadopago` (AWS, job de consulta). Sem valor, o serviço não sobe: o webhook aberto nunca aparece por omissão |
 | `MP_ACCESS_TOKEN` / `MP_BASE_URL` | — | credenciais do Mercado Pago (quando `mercadopago`) |
 | `MP_NOTIFICATION_URL` | — | (opcional) URL de notificação enviada na preferência; a confirmação não depende dela |
 | `PAYMENT_POLLING_INTERVAL_MS` | `30000` | intervalo do job de consulta ao Mercado Pago |
+| `MP_CONNECT_TIMEOUT` / `MP_READ_TIMEOUT` | `5s` / `10s` | Timeouts das chamadas ao Mercado Pago (um gateway travado não congela a confirmação dos pagamentos) |
+| `SCHEDULING_POOL_SIZE` | `4` | Threads dos jobs `@Scheduled` (consumidor SQS e consulta ao Mercado Pago não dividem uma thread só) |
 | `MESSAGING_ENABLED` | `false` | liga SNS/SQS; `false` roda sem broker |
 | `AWS_ENDPOINT` | — | vazio = AWS real; `http://localhost:4566` = LocalStack |
 | `BILLING_COMMANDS_QUEUE_URL` | — | Fila de comandos da Saga para o Billing |
@@ -199,6 +206,13 @@ pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início
 Manifests em `k8s/` (`namespace`, `configmap`, `secret`, `app`, `hpa`). Deploy
 automatizado pelo pipeline (`deploy-aws`, quando `USE_AWS=true`) no cluster
 `workbench-platform-<branch>`, namespace `billing-service`.
+
+O que os manifests garantem:
+- **Rede:** o Service é um **NLB interno** (`aws-load-balancer-internal`), alcançável só de dentro da VPC. O tráfego de fora entra pelo API Gateway (VPC Link + authorizer JWT); Swagger e actuator não ficam na internet. Se o Service já existia como LB público, o pipeline o recria uma vez (o esquema de um LB não muda depois de criado). Uma `NetworkPolicy` deixa entrar só a porta 8080 (vale com NetworkPolicy ligada no VPC CNI).
+- **Imagem:** o pipeline troca o `REPLACE_IMAGE` do `app.yaml` pela tag do commit antes do `kubectl apply` (um rollout por deploy). Não há tag `:latest`; o `dd-java-agent` injetado pelo Datadog tem versão fixa (`v1.68.2`).
+- **Pods:** usuário não-root (UID 10001), sem escalar privilégio, sem capabilities, sistema de arquivos somente leitura (só `/tmp` gravável), `seccomp` padrão. A subida tem um `startupProbe` (até 5 min); liveness e readiness começam depois. A JVM usa até 75% da memória do container (`-XX:MaxRAMPercentage=75.0`).
+- **Escala:** o número de réplicas é só do HPA (o `Deployment` não fixa `replicas`), e um `PodDisruptionBudget` tira no máximo 1 pod por vez numa troca de nó.
+- **Banco:** o RDS do `workbench-database` (URL e credenciais no Secret). O Postgres in-cluster saiu do `app.yaml` e ficou em `k8s/postgres-local.yaml`, só para testar num cluster sem RDS (o pipeline não aplica e remove o que sobrou de deploys antigos).
 
 ---
 
@@ -266,7 +280,7 @@ sem dono registrado (anterior a essa regra) só é visível ao staff.
   (404) e que o job de consulta está ativo.
 - **Teste de contrato da Saga** (`BillingSagaContractTest`): consome o exemplo de
   `ComandoGerarOrcamento` do contrato e confere os campos de tudo o que publica.
-- Cobertura atual (medida em 2026-11-11): **85,6% de linhas** e 71,9% de branches (`target/site/jacoco/index.html`).
+- Cobertura atual (medida em 2026-11-15): **85,8% de linhas** e 72,9% de branches (`target/site/jacoco/index.html`).
 - Evidência por execução do CI: artefato `jacoco-report` do job `unit-test` (relatório HTML) e o Quality Gate do SonarCloud no job `code-analysis`.
 
 ---

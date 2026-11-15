@@ -24,6 +24,10 @@ import java.util.UUID;
  *   <li>Qualquer outro estado: idempotente, devolve o existente sem chamar o gateway
  *       (o comando pode chegar repetido por reenvio/SQS).</li>
  * </ul>
+ *
+ * <p>A linha do orçamento fica travada durante a criação: duas réplicas com o mesmo
+ * comando não criam duas preferências no Mercado Pago — a segunda espera e devolve a
+ * cobrança da primeira.
  */
 @Service
 @RequiredArgsConstructor
@@ -35,11 +39,13 @@ public class CreatePaymentUseCase {
 
     @Transactional
     public Payment execute(UUID serviceOrderId) {
+        // Trava antes de ler o pagamento: quem chega depois só lê depois do commit do primeiro.
+        Optional<Budget> lockedBudget = budgetRepository.lockByServiceOrderId(serviceOrderId);
         Optional<Payment> existing = paymentRepository.findByServiceOrderId(serviceOrderId);
         if (existing.isPresent()) {
             return existing.get().isRejected() ? chargeAgain(existing.get()) : existing.get();
         }
-        Budget budget = budgetRepository.findByServiceOrderId(serviceOrderId)
+        Budget budget = lockedBudget
                 .orElseThrow(() -> new NoSuchElementException("Orçamento não encontrado para a OS: " + serviceOrderId));
 
         var charge = gateway.createCharge(Payment.chargeReference(serviceOrderId, 1), budget.getTotalPrice());

@@ -4,10 +4,12 @@ import com.workbench.workshop.application.payment.port.out.PaymentGatewayPort;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.net.http.HttpClient;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +32,11 @@ public class MercadoPagoGatewayAdapter implements PaymentGatewayPort {
     private final String notificationUrl;
 
     public MercadoPagoGatewayAdapter(MercadoPagoProperties props) {
+        HttpClient httpClient = HttpClient.newBuilder().connectTimeout(props.getConnectTimeout()).build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(props.getReadTimeout());
         this.restClient = RestClient.builder()
+                .requestFactory(requestFactory)
                 .baseUrl(props.getBaseUrl())
                 .defaultHeader("Authorization", "Bearer " + props.getAccessToken())
                 .build();

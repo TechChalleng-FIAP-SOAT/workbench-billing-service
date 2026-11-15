@@ -91,12 +91,12 @@ public class SagaCommandHandler {
         return raw.stream()
                 .map(i -> new PartInput(
                         stringOrNull(i.get("productId")),
-                        String.valueOf(i.get("name")),
-                        String.valueOf(i.get("sku")),
+                        required(i, "name", "peça"),
+                        stringOrNull(i.get("sku")),
                         stringOrNull(i.get("brand")),
-                        ItemType.valueOf(String.valueOf(i.get("itemType"))),
-                        new BigDecimal(String.valueOf(i.get("unitPrice"))),
-                        new BigDecimal(String.valueOf(i.get("quantity")))))
+                        ItemType.valueOf(required(i, "itemType", "peça")),
+                        new BigDecimal(required(i, "unitPrice", "peça")),
+                        new BigDecimal(required(i, "quantity", "peça"))))
                 .toList();
     }
 
@@ -105,9 +105,9 @@ public class SagaCommandHandler {
         var raw = (List<Map<String, Object>>) payload.getOrDefault("labor", List.of());
         return raw.stream()
                 .map(i -> new LaborInput(
-                        String.valueOf(i.get("serviceName")),
+                        required(i, "serviceName", "mão de obra"),
                         stringOrNull(i.get("laborCode")),
-                        new BigDecimal(String.valueOf(i.get("laborCost")))))
+                        new BigDecimal(required(i, "laborCost", "mão de obra"))))
                 .toList();
     }
 
@@ -117,6 +117,18 @@ public class SagaCommandHandler {
 
     private static String stringOrNull(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    /**
+     * Campo obrigatório do item: ausente vira erro (e o orçamento responde OrcamentoFalhou),
+     * em vez de entrar no orçamento como o texto "null".
+     */
+    private static String required(Map<String, Object> item, String field, String itemKind) {
+        Object value = item.get(field);
+        if (value == null || String.valueOf(value).isBlank()) {
+            throw new IllegalArgumentException("Campo obrigatório ausente no item de " + itemKind + ": " + field);
+        }
+        return String.valueOf(value);
     }
 
     /** Monta um payload tolerando valores nulos (diferente de Map.of). */

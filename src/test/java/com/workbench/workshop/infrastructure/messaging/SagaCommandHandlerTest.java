@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -72,6 +73,40 @@ class SagaCommandHandlerTest {
         ArgumentCaptor<MessageEnvelope> captor = ArgumentCaptor.forClass(MessageEnvelope.class);
         verify(publisher).publish(captor.capture());
         assertEquals("OrcamentoFalhou", captor.getValue().type());
+        verifyNoInteractions(generateBudgetUseCase);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void missingOptionalFieldsStayNullInsteadOfTheTextNull() {
+        // Produto fora do catálogo: o Execution manda a peça sem sku/brand.
+        Budget b = Budget.reconstitute(10L, osId, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), null, null);
+        when(generateBudgetUseCase.execute(eq(osId), any(), any(), any())).thenReturn(b);
+        var payload = Map.<String, Object>of(
+                "parts", List.of(Map.of("productId", "1", "name", "Produto 1", "itemType", "PART",
+                        "unitPrice", "0", "quantity", "1")),
+                "labor", List.of());
+
+        handler.handle(cmd("ComandoGerarOrcamento", payload));
+
+        ArgumentCaptor<List<GenerateBudgetUseCase.PartInput>> parts = ArgumentCaptor.forClass(List.class);
+        verify(generateBudgetUseCase).execute(eq(osId), any(), parts.capture(), any());
+        assertNull(parts.getValue().get(0).sku());
+        assertNull(parts.getValue().get(0).brand());
+    }
+
+    @Test
+    void missingRequiredFieldRepliesBudgetFailed() {
+        var payload = Map.<String, Object>of(
+                "parts", List.of(),
+                "labor", List.of(Map.of("serviceName", "ALINHAMENTO"))); // sem laborCost
+        handler.handle(cmd("ComandoGerarOrcamento", payload));
+
+        ArgumentCaptor<MessageEnvelope> captor = ArgumentCaptor.forClass(MessageEnvelope.class);
+        verify(publisher).publish(captor.capture());
+        assertEquals("OrcamentoFalhou", captor.getValue().type());
+        assertEquals("Campo obrigatório ausente no item de mão de obra: laborCost", captor.getValue().payload().get("reason"));
         verifyNoInteractions(generateBudgetUseCase);
     }
 
