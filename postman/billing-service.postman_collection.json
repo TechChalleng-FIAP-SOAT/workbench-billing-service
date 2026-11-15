@@ -1,11 +1,11 @@
 {
   "info": {
     "name": "Workbench - Billing Service",
-    "description": "Collection do microsserviço de Orçamento e Pagamento. Consulta o orçamento gerado pela Saga, cria cobrança (Mercado Pago) e recebe o webhook de aprovação/recusa. Variáveis: baseUrl, token, serviceOrderId.",
+    "description": "Collection do microsserviço de Orçamento e Pagamento. Consulta o orçamento gerado pela Saga, cria cobrança (Mercado Pago) e recebe o webhook de aprovação/recusa. Variáveis: baseUrl, token, serviceOrderId. baseUrl: http://localhost:8082 (serviço direto, compose local) ou http://localhost:8000 (gateway local). Na AWS os serviços têm NLB interno: use a invoke_url do API Gateway como baseUrl e o token do POST /auth/login.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    {"key": "baseUrl", "value": "http://localhost:8080"},
+    {"key": "baseUrl", "value": "http://localhost:8082"},
     {"key": "token", "value": ""},
     {"key": "serviceOrderId", "value": ""}
   ],
