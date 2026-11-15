@@ -278,7 +278,7 @@ sem dono registrado (anterior a essa regra) só é visível ao staff.
 | GET | `/api/payments/service-order/{osId}/history` | Histórico de pagamento | token |
 
 > **Link de pagamento (checkout):** ao criar a cobrança, o gateway devolve um
-> `checkoutUrl`. Ele é **persistido** e enviado ao cliente por e-mail (via os-service, no
+> `checkoutUrl`. Ele é **persistido** e enviado por e-mail (ao cliente com o canal SES; com o SNS, ao endereço inscrito no tópico; via os-service, no
 > evento `CobrancaCriada`). Caso o cliente perca o e-mail, consulta o link em
 > `GET /api/payments/service-order/{osId}` (campo `checkoutUrl`).
 
