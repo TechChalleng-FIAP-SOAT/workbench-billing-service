@@ -44,7 +44,6 @@ public class MercadoPagoGatewayAdapter implements PaymentGatewayPort {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public GatewayCharge createCharge(String chargeReference, BigDecimal amount) {
         Map<String, Object> body = new HashMap<>();
         body.put("items", List.of(Map.of(
