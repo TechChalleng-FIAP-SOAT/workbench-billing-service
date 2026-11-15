@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +26,7 @@ public class BudgetPersistenceAdapter implements BudgetRepository {
                 ? budgetJpaRepository.findById(budget.getId()).orElseGet(BudgetEntity::new)
                 : new BudgetEntity();
         entity.setServiceOrderId(budget.getServiceOrderId());
+        entity.setCustomerDocument(budget.getCustomerDocument());
         entity.setTotalParts(budget.getTotalParts());
         entity.setTotalLabor(budget.getTotalLabor());
         entity.setTotalPrice(budget.getTotalPrice());
@@ -55,32 +55,15 @@ public class BudgetPersistenceAdapter implements BudgetRepository {
     }
 
     private Budget toDomain(BudgetEntity e) {
-        Budget b = new Budget();
-        b.setId(e.getId());
-        b.setServiceOrderId(e.getServiceOrderId());
-        b.setTotalParts(e.getTotalParts());
-        b.setTotalLabor(e.getTotalLabor());
-        b.setTotalPrice(e.getTotalPrice());
-        b.setCreatedAt(e.getCreatedAt());
-        b.setUpdatedAt(e.getUpdatedAt());
         List<BudgetItem> items = budgetItemJpaRepository.findByBudgetId(e.getId()).stream()
                 .map(this::itemToDomain).toList();
-        b.setItems(new ArrayList<>(items));
-        return b;
+        return Budget.reconstitute(e.getId(), e.getServiceOrderId(), e.getCustomerDocument(),
+                e.getTotalParts(), e.getTotalLabor(), e.getTotalPrice(), items,
+                e.getCreatedAt(), e.getUpdatedAt());
     }
 
     private BudgetItem itemToDomain(BudgetItemEntity e) {
-        BudgetItem i = new BudgetItem();
-        i.setId(e.getId());
-        i.setBudgetId(e.getBudgetId());
-        i.setProductId(e.getProductId());
-        i.setName(e.getName());
-        i.setSku(e.getSku());
-        i.setBrand(e.getBrand());
-        i.setItemType(e.getItemType());
-        i.setQuantity(e.getQuantity());
-        i.setUnitPrice(e.getUnitPrice());
-        i.setTotalPrice(e.getTotalPrice());
-        return i;
+        return new BudgetItem(e.getId(), e.getBudgetId(), e.getProductId(), e.getName(), e.getSku(),
+                e.getBrand(), e.getItemType(), e.getQuantity(), e.getUnitPrice(), e.getTotalPrice());
     }
 }

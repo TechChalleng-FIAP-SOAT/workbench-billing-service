@@ -2,6 +2,7 @@ package com.workbench.workshop.application.payment.port.out;
 
 import com.workbench.workshop.domain.payment.Payment;
 import com.workbench.workshop.domain.payment.PaymentHistory;
+import com.workbench.workshop.domain.payment.PaymentStatus;
 
 import java.util.List;
 import java.util.Optional;
@@ -11,6 +12,7 @@ public interface PaymentRepository {
     Payment save(Payment payment);
     Optional<Payment> findByServiceOrderId(UUID serviceOrderId);
     Optional<Payment> findByGatewayPaymentId(String gatewayPaymentId);
+    List<Payment> findByStatus(PaymentStatus status);
 
     PaymentHistory appendHistory(PaymentHistory history);
     List<PaymentHistory> findHistory(UUID serviceOrderId);

@@ -28,12 +28,10 @@ public class GenerateBudgetUseCase {
     private final BudgetRepository budgetRepository;
 
     @Transactional
-    public Budget execute(UUID serviceOrderId, List<PartInput> parts, List<LaborInput> labor) {
-        Budget budget = budgetRepository.findByServiceOrderId(serviceOrderId).orElseGet(() -> {
-            Budget b = new Budget();
-            b.setServiceOrderId(serviceOrderId);
-            return b;
-        });
+    public Budget execute(UUID serviceOrderId, String customerDocument,
+                          List<PartInput> parts, List<LaborInput> labor) {
+        Budget budget = budgetRepository.findByServiceOrderId(serviceOrderId)
+                .orElseGet(() -> Budget.forServiceOrder(serviceOrderId));
 
         List<BudgetItem> items = new ArrayList<>();
         for (PartInput p : parts) {
@@ -44,8 +42,7 @@ public class GenerateBudgetUseCase {
             items.add(BudgetItem.laborSnapshot(l.serviceName(), l.laborCode(), l.laborCost()));
         }
 
-        budget.setItems(items);
-        budget.recalculateTotals();
+        budget.revise(customerDocument, items);
         return budgetRepository.save(budget);
     }
 

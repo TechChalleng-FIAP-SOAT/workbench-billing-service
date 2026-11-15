@@ -1,7 +1,8 @@
 package com.workbench.workshop.infrastructure.messaging;
 
 import com.workbench.workshop.application.budget.GenerateBudgetUseCase;
-import com.workbench.workshop.application.payment.PaymentUseCases;
+import com.workbench.workshop.application.payment.CreatePaymentUseCase;
+import com.workbench.workshop.application.payment.RefundPaymentUseCase;
 import com.workbench.workshop.domain.budget.Budget;
 import com.workbench.workshop.domain.payment.Payment;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,7 +22,8 @@ import static org.mockito.Mockito.*;
 class SagaCommandHandlerTest {
 
     private GenerateBudgetUseCase generateBudgetUseCase;
-    private PaymentUseCases paymentUseCases;
+    private CreatePaymentUseCase createPayment;
+    private RefundPaymentUseCase refundPayment;
     private BillingEventPublisher publisher;
     private SagaCommandHandler handler;
 
@@ -30,9 +32,10 @@ class SagaCommandHandlerTest {
     @BeforeEach
     void setUp() {
         generateBudgetUseCase = mock(GenerateBudgetUseCase.class);
-        paymentUseCases = mock(PaymentUseCases.class);
+        createPayment = mock(CreatePaymentUseCase.class);
+        refundPayment = mock(RefundPaymentUseCase.class);
         publisher = mock(BillingEventPublisher.class);
-        handler = new SagaCommandHandler(generateBudgetUseCase, paymentUseCases, publisher);
+        handler = new SagaCommandHandler(generateBudgetUseCase, createPayment, refundPayment, publisher);
     }
 
     private MessageEnvelope cmd(String type, Map<String, Object> payload) {
@@ -40,13 +43,10 @@ class SagaCommandHandlerTest {
     }
 
     @Test
-    void gerarOrcamentoPublishesOrcamentoGerado() {
-        Budget b = new Budget();
-        b.setId(10L);
-        b.setTotalParts(new BigDecimal("100.00"));
-        b.setTotalLabor(new BigDecimal("200.00"));
-        b.setTotalPrice(new BigDecimal("300.00"));
-        when(generateBudgetUseCase.execute(eq(osId), any(), any())).thenReturn(b);
+    void generateBudgetPublishesBudgetGenerated() {
+        Budget b = Budget.reconstitute(10L, osId, "52998224725", new BigDecimal("100.00"),
+                new BigDecimal("200.00"), new BigDecimal("300.00"), List.of(), null, null);
+        when(generateBudgetUseCase.execute(eq(osId), any(), any(), any())).thenReturn(b);
 
         var payload = Map.<String, Object>of(
                 "parts", List.of(Map.of(
@@ -62,8 +62,22 @@ class SagaCommandHandlerTest {
     }
 
     @Test
-    void gerarOrcamentoPublishesOrcamentoFalhouOnError() {
-        when(generateBudgetUseCase.execute(eq(osId), any(), any()))
+    void malformedPartRepliesBudgetFailed() {
+        // itemType ausente: antes ia para a DLQ sem resposta; agora é OrcamentoFalhou.
+        var payload = Map.<String, Object>of(
+                "parts", List.of(Map.of("productId", "1", "unitPrice", "10", "quantity", "1")),
+                "labor", List.of());
+        handler.handle(cmd("ComandoGerarOrcamento", payload));
+
+        ArgumentCaptor<MessageEnvelope> captor = ArgumentCaptor.forClass(MessageEnvelope.class);
+        verify(publisher).publish(captor.capture());
+        assertEquals("OrcamentoFalhou", captor.getValue().type());
+        verifyNoInteractions(generateBudgetUseCase);
+    }
+
+    @Test
+    void generateBudgetPublishesBudgetFailedOnError() {
+        when(generateBudgetUseCase.execute(eq(osId), any(), any(), any()))
                 .thenThrow(new RuntimeException("itens inválidos"));
 
         var payload = Map.<String, Object>of("parts", List.of(), "labor", List.of());
@@ -75,9 +89,9 @@ class SagaCommandHandlerTest {
     }
 
     @Test
-    void cobrarPagamentoPublishesCobrancaCriada() {
+    void chargePaymentPublishesChargeCreated() {
         Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1", "http://checkout/GW-1");
-        when(paymentUseCases.createPayment(osId)).thenReturn(p);
+        when(createPayment.execute(osId)).thenReturn(p);
 
         handler.handle(cmd("ComandoCobrarPagamento", Map.of()));
 
@@ -87,11 +101,11 @@ class SagaCommandHandlerTest {
     }
 
     @Test
-    void estornarPublishesPagamentoEstornado() {
+    void refundPublishesPaymentRefunded() {
         Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1", "http://checkout/GW-1");
-        p.approve();
+        p.approve(null);
         p.refund();
-        when(paymentUseCases.refund(osId)).thenReturn(p);
+        when(refundPayment.execute(osId)).thenReturn(p);
 
         handler.handle(cmd("ComandoEstornarPagamento", Map.of()));
 

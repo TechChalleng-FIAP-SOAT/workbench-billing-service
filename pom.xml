@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.0.5</version>
+		<version>4.0.9</version>
 		<relativePath/>
 	</parent>
 	<groupId>com.workbench</groupId>
@@ -109,6 +109,17 @@
 			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>sqs</artifactId>
 			<version>${aws.sdk.version}</version>
+		</dependency>
+		<!-- ShedLock: job de consulta ao Mercado Pago roda em uma réplica por vez (HPA) -->
+		<dependency>
+			<groupId>net.javacrumbs.shedlock</groupId>
+			<artifactId>shedlock-spring</artifactId>
+			<version>5.16.0</version>
+		</dependency>
+		<dependency>
+			<groupId>net.javacrumbs.shedlock</groupId>
+			<artifactId>shedlock-provider-jdbc-template</artifactId>
+			<version>5.16.0</version>
 		</dependency>
 
 		<dependency>

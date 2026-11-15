@@ -74,7 +74,7 @@ class BillingIntegrationTest {
         UUID osId = UUID.randomUUID();
 
         // 1. gera orçamento (como se viesse do ComandoGerarOrcamento): peças + MO
-        generateBudgetUseCase.execute(osId,
+        generateBudgetUseCase.execute(osId, "52998224725",
                 List.of(new GenerateBudgetUseCase.PartInput("1", "Pastilha", "PF-1", "Marca X", ItemType.PART,
                         new BigDecimal("50.00"), new BigDecimal("2"))),   // 100
                 List.of(new GenerateBudgetUseCase.LaborInput("DISCO E PASTILHA", "00",
@@ -108,6 +108,36 @@ class BillingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].status").value("PENDENTE"))
                 .andExpect(jsonPath("$[1].status").value("PAGAMENTO_APROVADO"));
+    }
+
+    /** Token de cliente (emitido pela Lambda de auth): subject = CPF + claim clientId. */
+    private String clientBearer(String cpf) {
+        SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+        long now = System.currentTimeMillis();
+        return "Bearer " + Jwts.builder()
+                .subject(cpf)
+                .claim("clientId", 1)
+                .issuedAt(new Date(now))
+                .expiration(new Date(now + 3600000))
+                .signWith(key)
+                .compact();
+    }
+
+    @Test
+    void clientSeesOnlyOwnBudget() throws Exception {
+        UUID osId = UUID.randomUUID();
+        generateBudgetUseCase.execute(osId, "52998224725",
+                List.of(new GenerateBudgetUseCase.PartInput("1", "Peca", "P-1", "M", ItemType.PART,
+                        new BigDecimal("40.00"), new BigDecimal("1"))),
+                List.of());
+
+        mockMvc.perform(get("/api/budgets/service-order/" + osId).header("Authorization", clientBearer("52998224725")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/budgets/service-order/" + osId).header("Authorization", clientBearer("11144477735")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/payments/service-order/" + osId + "/history")
+                        .header("Authorization", clientBearer("11144477735")))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -145,7 +175,7 @@ class BillingIntegrationTest {
     @Test
     void getPaymentReturnsCheckoutUrl() throws Exception {
         UUID osId = UUID.randomUUID();
-        generateBudgetUseCase.execute(osId,
+        generateBudgetUseCase.execute(osId, "52998224725",
                 List.of(new GenerateBudgetUseCase.PartInput("1", "Peca", "P-1", "M", ItemType.PART,
                         new BigDecimal("40.00"), new BigDecimal("1"))),
                 List.of());
@@ -156,5 +186,19 @@ class BillingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.checkoutUrl").exists())
                 .andExpect(jsonPath("$.status").value("PENDENTE"));
+    }
+
+    @Test
+    void responsesCarrySecurityHeaders() throws Exception {
+        // Mesmo sem token (401), toda resposta leva os cabeçalhos de proteção.
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/budgets/service-order/00000000-0000-0000-0000-000000000000"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Frame-Options", "DENY"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cross-Origin-Resource-Policy", "same-origin"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cross-Origin-Opener-Policy", "same-origin"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cross-Origin-Embedder-Policy", "require-corp"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content().contentTypeCompatibleWith("application/json"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.status").value(401));
     }
 }

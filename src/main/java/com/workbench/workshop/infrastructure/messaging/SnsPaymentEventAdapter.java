@@ -25,14 +25,14 @@ public class SnsPaymentEventAdapter implements PaymentEventPort {
     public void paymentConfirmed(UUID serviceOrderId) {
         String os = serviceOrderId.toString();
         log.info("Publicando PagamentoConfirmado: serviceOrderId={}", os);
-        publisher.publish(MessageEnvelope.of("PagamentoConfirmado", os, os, Map.of()));
+        publisher.publish(MessageEnvelope.of(SagaMessages.PAYMENT_CONFIRMED, os, os, Map.of()));
     }
 
     @Override
     public void paymentFailed(UUID serviceOrderId, String reason) {
         String os = serviceOrderId.toString();
         log.info("Publicando PagamentoFalhou: serviceOrderId={}, reason={}", os, reason);
-        publisher.publish(MessageEnvelope.of("PagamentoFalhou", os, os,
+        publisher.publish(MessageEnvelope.of(SagaMessages.PAYMENT_FAILED, os, os,
                 Map.of("reason", reason == null ? "pagamento recusado" : reason)));
     }
 }

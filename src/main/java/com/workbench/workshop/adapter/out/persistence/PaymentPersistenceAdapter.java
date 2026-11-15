@@ -3,6 +3,7 @@ package com.workbench.workshop.adapter.out.persistence;
 import com.workbench.workshop.application.payment.port.out.PaymentRepository;
 import com.workbench.workshop.domain.payment.Payment;
 import com.workbench.workshop.domain.payment.PaymentHistory;
+import com.workbench.workshop.domain.payment.PaymentStatus;
 import com.workbench.workshop.infrastructure.persistence.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,8 @@ public class PaymentPersistenceAdapter implements PaymentRepository {
         entity.setStatus(payment.getStatus());
         entity.setGatewayPaymentId(payment.getGatewayPaymentId());
         entity.setCheckoutUrl(payment.getCheckoutUrl());
+        entity.setGatewayTransactionId(payment.getGatewayTransactionId());
+        entity.setAttempt(payment.getAttempt());
         return toDomain(paymentJpaRepository.save(entity));
     }
 
@@ -43,6 +46,11 @@ public class PaymentPersistenceAdapter implements PaymentRepository {
     }
 
     @Override
+    public List<Payment> findByStatus(PaymentStatus status) {
+        return paymentJpaRepository.findByStatus(status).stream().map(this::toDomain).toList();
+    }
+
+    @Override
     public PaymentHistory appendHistory(PaymentHistory history) {
         PaymentHistoryEntity e = new PaymentHistoryEntity();
         e.setPaymentId(history.getPaymentId());
@@ -50,24 +58,21 @@ public class PaymentPersistenceAdapter implements PaymentRepository {
         e.setStatus(history.getStatus());
         e.setDetail(history.getDetail());
         PaymentHistoryEntity saved = historyJpaRepository.save(e);
-        history.setId(saved.getId());
-        history.setCreatedAt(saved.getCreatedAt());
-        return history;
+        return new PaymentHistory(saved.getId(), history.getPaymentId(), history.getServiceOrderId(),
+                history.getStatus(), history.getDetail(), saved.getCreatedAt());
     }
 
     @Override
     public List<PaymentHistory> findHistory(UUID serviceOrderId) {
         return historyJpaRepository.findByServiceOrderIdOrderByCreatedAtAsc(serviceOrderId).stream()
-                .map(h -> {
-                    PaymentHistory ph = PaymentHistory.of(h.getPaymentId(), h.getServiceOrderId(), h.getStatus(), h.getDetail());
-                    ph.setId(h.getId());
-                    ph.setCreatedAt(h.getCreatedAt());
-                    return ph;
-                }).toList();
+                .map(h -> new PaymentHistory(h.getId(), h.getPaymentId(), h.getServiceOrderId(),
+                        h.getStatus(), h.getDetail(), h.getCreatedAt()))
+                .toList();
     }
 
     private Payment toDomain(PaymentEntity e) {
         return Payment.reconstitute(e.getId(), e.getServiceOrderId(), e.getBudgetId(), e.getAmount(),
-                e.getStatus(), e.getGatewayPaymentId(), e.getCheckoutUrl(), e.getCreatedAt(), e.getUpdatedAt());
+                e.getStatus(), e.getGatewayPaymentId(), e.getCheckoutUrl(), e.getGatewayTransactionId(), e.getAttempt(),
+                e.getCreatedAt(), e.getUpdatedAt());
     }
 }

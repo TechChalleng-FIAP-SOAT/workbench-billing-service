@@ -54,14 +54,18 @@ jwt:
   secret: ${JWT_SECRET:akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa}
 
 # Mercado Pago (pagamento).
-#  - provider=fake (default): adapter determinístico, offline (testes/dev).
-#  - provider=mercadopago: integra o sandbox (requer access-token de teste).
+#  - provider=fake (default): adapter determinístico, offline (testes/dev); a
+#    decisão vem do webhook simulado POST /api/payments/webhook (só existe aqui).
+#  - provider=mercadopago: Checkout Pro (sandbox com access-token TEST-...); a
+#    decisão vem do job que consulta GET /v1/payments/search?external_reference=.
 payment:
   provider: ${PAYMENT_PROVIDER:fake}
+  # Intervalo do job de consulta ao Mercado Pago (só com provider=mercadopago).
+  polling-interval-ms: ${PAYMENT_POLLING_INTERVAL_MS:30000}
   mercadopago:
     access-token: ${MP_ACCESS_TOKEN:}
     base-url: ${MP_BASE_URL:https://api.mercadopago.com}
-    # URL pública deste serviço para o webhook de notificação.
+    # Opcional: a confirmação é por consulta; só preencha se quiser a notificação do MP.
     notification-url: ${MP_NOTIFICATION_URL:}
 
 # Mensageria (Saga) — mesma convenção dos demais serviços.

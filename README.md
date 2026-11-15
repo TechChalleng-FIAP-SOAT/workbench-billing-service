@@ -8,7 +8,7 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
 > mantido como base histórica). Na Fase 4 a aplicação foi refatorada em
 > **microsserviços independentes**, cada um com seu repositório, infraestrutura e
 > banco próprios. Este repositório é o **Billing Service**. A divisão dos serviços e a
-> estratégia da Saga estão nos ADRs (`workbench-monolith/docs/adr` — ADR-0003 e ADR-0005).
+> estratégia da Saga estão nos ADRs (`workbench-monolith/docs/adr` — ADR-0006 e ADR-0005).
 
 ---
 
@@ -37,7 +37,8 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
   (item `SERVICE_COST`, vinda do OS Service). Congela um snapshot de preço; expõe
   total de peças, total de MO e total geral.
 - **Pagamento**: ocorre **no fim do fluxo** (ADR-0005). Máquina de estados
-  `PENDENTE → APROVADO/RECUSADO` e `APROVADO → ESTORNADO`.
+  `PENDENTE → PAGAMENTO_APROVADO | RECUSADO`, `RECUSADO → PENDENTE` (nova cobrança) e
+  `PAGAMENTO_APROVADO → ESTORNADO` (estorno real no Mercado Pago).
 - **Histórico de pagamento** (append-only) para auditoria e verificação.
 
 ---
@@ -50,10 +51,10 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
 | Banco próprio | **PostgreSQL** exclusivo; nenhum outro serviço o acessa |
 | SQL **e** NoSQL (no conjunto) | Contribui com o **SQL** (PostgreSQL) |
 | Nenhum acesso ao banco de outro serviço | Recebe os itens já precificados por mensagem; **não** acessa estoque/OS |
-| REST + mensageria assíncrona | API REST (orçamento/pagamento/webhook) + **SNS/SQS** (comandos/eventos) |
-| **Pagamento Mercado Pago** | `PaymentGatewayPort` com adapter Mercado Pago (sandbox/produção) + webhook |
+| REST + mensageria assíncrona | API REST (orçamento/pagamento) + **SNS/SQS** (comandos/eventos) |
+| **Pagamento Mercado Pago** | `PaymentGatewayPort` com adapter Mercado Pago (Checkout Pro, sandbox/produção) + job que consulta o pagamento |
 | Saga Pattern + compensação | Participa da Saga; publica `OrcamentoFalhou` para retry/compensação; estorno via `ComandoEstornarPagamento` |
-| Testes + 80% cobertura + Sonar | JaCoCo gate 80% no `verify` + SonarCloud (cobertura ~88%) |
+| Testes + 80% cobertura + Sonar | JaCoCo gate 80% no `verify` + SonarCloud (cobertura ~86%) |
 | CI/CD + deploy K8s + branch protegida | Pipeline próprio; `main` protegida |
 
 ---
@@ -64,11 +65,30 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
 
 | provider | adapter | uso |
 |---|---|---|
-| `fake` (default) | `FakePaymentGatewayAdapter` | testes/dev e demonstração da Saga, offline |
-| `mercadopago` | `MercadoPagoGatewayAdapter` | sandbox (homologação) / produção |
+| `fake` (default) | `FakePaymentGatewayAdapter` | ambiente local e testes, offline |
+| `mercadopago` | `MercadoPagoGatewayAdapter` | AWS: sandbox (homologação) / produção |
 
-Trocar sandbox→produção é apenas `MP_ACCESS_TOKEN`/`MP_BASE_URL` — **sem mudança de
-código**. A confirmação chega via **webhook** em `POST /api/payments/webhook`.
+**Como o pagamento é confirmado:**
+
+- **`mercadopago` (AWS):** a cobrança é uma preferência do Checkout Pro
+  (`POST /checkout/preferences`). A `external_reference` é a **referência da cobrança**:
+  o id da OS na 1ª tentativa e `<OS>-2`, `<OS>-3`… nas novas cobranças após recusa, para a
+  consulta não confundir a tentativa nova com a cancelada. O job
+  `PaymentStatusPollingJob` roda a cada `PAYMENT_POLLING_INTERVAL_MS` (30 s) e, para
+  cada pagamento `PENDENTE`, consulta `GET /v1/payments/search?external_reference={ref}`:
+  qualquer tentativa `approved` → aprova; tentativa mais recente `cancelled` → recusa;
+  o resto (`pending`, `in_process`, `rejected` com nova tentativa possível) → espera. A
+  decisão publica `PagamentoConfirmado`/`PagamentoFalhou` para a Saga e grava o **id do
+  pagamento aprovado** no provedor (usado no estorno). ShedLock garante uma réplica por
+  vez. **Não há webhook público.**
+- **Estorno:** `POST /v1/payments/{id}/refunds` com `X-Idempotency-Key` (estorno repetido
+  não devolve duas vezes). Pagamento aprovado pelo webhook simulado não tem transação no
+  provedor e não chama o gateway.
+- **`fake` (local):** a decisão vem do **webhook simulado** `POST /api/payments/webhook`
+  (`{"gatewayPaymentId": "...", "approved": true}`), que só existe com esse provider.
+
+Trocar sandbox→produção é apenas `MP_ACCESS_TOKEN` (`TEST-...` → `APP_USR-...`) — **sem
+mudança de código**.
 
 ---
 
@@ -77,12 +97,17 @@ código**. A confirmação chega via **webhook** em `POST /api/payments/webhook`
 | Recebe (comando) | Faz | Publica (evento) |
 |---|---|---|
 | `ComandoGerarOrcamento` | gera orçamento (peças + MO) | `OrcamentoGerado` ou `OrcamentoFalhou` (motivo) |
-| `ComandoCobrarPagamento` | cria cobrança no gateway | `CobrancaCriada` (confirma via webhook) |
-| `ComandoEstornarPagamento` | estorna pagamento | `PagamentoEstornado` |
+| `ComandoCobrarPagamento` | cria cobrança no gateway; se o pagamento anterior foi **recusado**, cria uma **nova** cobrança (novo link) | `CobrancaCriada` (confirmação depois, pelo job de consulta) |
+| `ComandoEstornarPagamento` | estorna no Mercado Pago e marca ESTORNADO | `PagamentoEstornado` |
 
 `OrcamentoFalhou` permite ao orquestrador (OS Service) fazer **retry** e, esgotado,
-**compensar** liberando a reserva de estoque (ver ADR-0005). Consumer com dedupe por
-`messageId` e redrive para **DLQ**.
+**compensar** liberando a reserva de estoque (ver ADR-0005). Payload malformado também
+responde `OrcamentoFalhou` (não vai para a DLQ sem resposta).
+
+Comandos repetidos (reenvio por timeout ou SQS) não duplicam efeito: cobrança existente é
+devolvida sem chamar o gateway; aprovação/recusa repetida é ignorada. Consumer com dedupe
+por `messageId` e redrive para **DLQ**. Nomes e campos seguem o contrato executável
+`workbench-messaging/contracts/saga-messages.json` (`BillingSagaContractTest`).
 
 ---
 
@@ -91,11 +116,14 @@ código**. A confirmação chega via **webhook** em `POST /api/payments/webhook`
 ```
 src/main/java/com/workbench/workshop/
 ├── adapter/
-│   ├── in/web/            # BudgetController, PaymentController (+ webhook)
+│   ├── in/web/            # BudgetController, PaymentController, FakePaymentWebhookController (só fake) + *Dtos
 │   └── out/persistence/   # Adapters JPA (budget, payment, histórico)
-├── application/           # Use cases + ports (GenerateBudget, PaymentUseCases)
-├── domain/                # Budget, BudgetItem (PART/SUPPLY/SERVICE_COST), Payment (máquina de estados)
-└── infrastructure/        # config, persistence (JPA), messaging (SNS/SQS), payment (fake/mercadopago)
+├── application/           # Uma classe por caso de uso + ports
+│   ├── budget/            # GenerateBudget, FindBudget
+│   └── payment/           # CreatePayment, HandlePaymentNotification, ListPendingPayments,
+│                          # ReconcilePayment, FindPaymentByServiceOrder, FindPaymentHistory, RefundPayment
+├── domain/                # Budget (totais derivados dos itens), BudgetItem (PART/SUPPLY/SERVICE_COST), Payment (máquina de estados)
+└── infrastructure/        # config, persistence (JPA), messaging (SNS/SQS), payment (fake/mercadopago), scheduling (job + ShedLock)
 ```
 
 ---
@@ -121,9 +149,12 @@ unit-test ──▶ code-analysis ──▶ build ──▶ docker-build-push �
  badge)
 ```
 
-Secrets/variáveis idênticos aos demais serviços (`DOCKER_*`, `SONAR_TOKEN`, `AWS_*`,
-`USE_AWS`) — ver o README do `workbench-os-service` para a tabela completa. Pagamento
-real exige `MP_ACCESS_TOKEN` (sandbox/produção).
+Secrets/variáveis comuns aos serviços (`DOCKER_*`, `SONAR_TOKEN`, `AWS_*`, `USE_AWS`) —
+ver o README do `workbench-os-service`. Próprios deste serviço: `DB_URL_BILLING_<ENV>`,
+`DB_USERNAME_BILLING`, `DB_PASSWORD_BILLING`, `JWT_SECRET` e **`MP_ACCESS_TOKEN`
+(obrigatório)** — o deploy usa `PAYMENT_PROVIDER=mercadopago` (`k8s/configmap.yaml`), com
+o access token de teste `TEST-...` do Mercado Pago. O job `deploy-aws` monta o Secret do
+pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início se faltar algum.
 
 ---
 
@@ -150,10 +181,16 @@ real exige `MP_ACCESS_TOKEN` (sandbox/produção).
 
 | Variável | Default | Descrição |
 |---|---|---|
-| `PAYMENT_PROVIDER` | `fake` | `fake` (offline) ou `mercadopago` (sandbox/produção) |
+| `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | Postgres local | Banco próprio do Billing |
+| `JWT_SECRET` | valor de dev | Segredo HS256 compartilhado |
+| `PAYMENT_PROVIDER` | `fake` | `fake` (local, webhook simulado) ou `mercadopago` (AWS, job de consulta) |
 | `MP_ACCESS_TOKEN` / `MP_BASE_URL` | — | credenciais do Mercado Pago (quando `mercadopago`) |
+| `MP_NOTIFICATION_URL` | — | (opcional) URL de notificação enviada na preferência; a confirmação não depende dela |
+| `PAYMENT_POLLING_INTERVAL_MS` | `30000` | intervalo do job de consulta ao Mercado Pago |
 | `MESSAGING_ENABLED` | `false` | liga SNS/SQS; `false` roda sem broker |
 | `AWS_ENDPOINT` | — | vazio = AWS real; `http://localhost:4566` = LocalStack |
+| `BILLING_COMMANDS_QUEUE_URL` | — | Fila de comandos da Saga para o Billing |
+| `BILLING_EVENTS_TOPIC_ARN` | — | Tópico onde o Billing publica as respostas |
 
 ---
 
@@ -174,19 +211,25 @@ cliente carregam `clientId` → `ROLE_CLIENT`.
 
 Rotas **públicas** (sem token):
 - `GET /actuator/health*`, Swagger/OpenAPI;
-- `POST /api/payments/webhook` — chamado pelo **gateway de pagamento externo** (Mercado
-  Pago), que não envia o nosso JWT.
+- `POST /api/payments/webhook` — webhook **simulado**, só existe com
+  `PAYMENT_PROVIDER=fake` (local). Com `mercadopago` a rota não existe (404).
 
-As consultas (`GET /api/budgets/**`, `GET /api/payments/**`) são liberadas ao cliente
-dono (`ROLE_CLIENT`) e ao staff; as demais rotas exigem ADMIN/TECHNICIAN.
+As consultas (`GET /api/budgets/**`, `GET /api/payments/**`) aceitam cliente
+(`ROLE_CLIENT`) e staff; as demais rotas exigem ADMIN/TECHNICIAN. Com token de cliente, o
+**dono é conferido no caso de uso**: o orçamento guarda o CPF/CNPJ do cliente
+(`customerDocument`, enviado pelo OS Service no `ComandoGerarOrcamento`), e só o mesmo CPF
+do token pode ler orçamento, pagamento e histórico — outro CPF recebe **403**. Orçamento
+sem dono registrado (anterior a essa regra) só é visível ao staff.
 
 ### Boas práticas OWASP aplicadas
-- **A01/A07 (acesso):** autorização por role em todas as rotas; JWT validado por serviço.
+- **A01/A07 (acesso):** autorização por role em todas as rotas; ownership para cliente
+  (orçamento/pagamento só do próprio CPF); JWT validado por serviço.
 - **A03 (injeção/validação):** `@Valid` + Bean Validation nos DTOs de entrada; acesso a
   dados via Spring Data JPA parametrizado (sem concatenação de SQL).
 - **A05 (misconfiguration):** headers `X-Frame-Options: DENY` e `X-Content-Type-Options:
-  nosniff`; `k8s/secret.yaml` com **placeholders** (`REPLACE_ME`) — segredos reais vêm do
-  secret manager no deploy, nunca versionados.
+  nosniff`; `k8s/secret.yaml` com **placeholders** (`REPLACE_ME`) — os valores reais vêm
+  dos secrets da org, montados pela pipeline, nunca versionados; rota inexistente responde
+  404 (não 500).
 - **A09 (logs):** o CPF do cliente é mascarado no log (MDC) — nunca registrado por inteiro.
 
 > Hotspot SonarCloud `java:S4502` (CSRF disabled) é marcado **Safe**: API REST stateless
@@ -201,7 +244,7 @@ dono (`ROLE_CLIENT`) e ao staff; as demais rotas exigem ADMIN/TECHNICIAN.
 | GET | `/api/budgets/service-order/{osId}` | Orçamento da OS (peças, MO e totais) | token |
 | GET | `/api/payments/service-order/{osId}` | Pagamento da OS (status + **checkoutUrl**) | token |
 | POST | `/api/payments/service-order/{osId}` | Criar cobrança (PENDENTE) — normalmente **automática** via Saga | staff |
-| POST | `/api/payments/webhook` | Notificação do gateway (aprova/recusa) | público |
+| POST | `/api/payments/webhook` | Webhook simulado (aprova/recusa) — **só com `fake`/local** | público |
 | GET | `/api/payments/service-order/{osId}/history` | Histórico de pagamento | token |
 
 > **Link de pagamento (checkout):** ao criar a cobrança, o gateway devolve um
@@ -218,8 +261,13 @@ dono (`ROLE_CLIENT`) e ao staff; as demais rotas exigem ADMIN/TECHNICIAN.
 ```
 
 - **Gate JaCoCo 80%** no `verify`.
-- Integração com **Testcontainers PostgreSQL**; gateway em modo `fake` (offline).
-- Cobertura atual: **~88%** (`target/site/jacoco/index.html`).
+- Integração com **Testcontainers PostgreSQL**; gateway em modo `fake` (offline). Um 2º
+  teste de integração sobe com `mercadopago` e garante que o webhook simulado **não existe**
+  (404) e que o job de consulta está ativo.
+- **Teste de contrato da Saga** (`BillingSagaContractTest`): consome o exemplo de
+  `ComandoGerarOrcamento` do contrato e confere os campos de tudo o que publica.
+- Cobertura atual (medida em 2026-11-11): **85,6% de linhas** e 71,9% de branches (`target/site/jacoco/index.html`).
+- Evidência por execução do CI: artefato `jacoco-report` do job `unit-test` (relatório HTML) e o Quality Gate do SonarCloud no job `code-analysis`.
 
 ---
 
