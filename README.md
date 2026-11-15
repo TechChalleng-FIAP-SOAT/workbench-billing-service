@@ -105,7 +105,15 @@ mudança de código**.
 responde `OrcamentoFalhou` (não vai para a DLQ sem resposta).
 
 Comandos repetidos (reenvio por timeout ou SQS) não duplicam efeito: cobrança existente é
-devolvida sem chamar o gateway; aprovação/recusa repetida é ignorada. Consumer com dedupe
+devolvida sem chamar o gateway; aprovação/recusa repetida é ignorada. Duas réplicas com o
+mesmo comando não cobram duas vezes (a linha do orçamento é travada durante a criação).
+
+**Rodada da Saga no pagamento:** `PagamentoConfirmado`/`PagamentoFalhou` não respondem a um
+comando (saem do job de consulta ou do webhook simulado). Por isso a cobrança guarda o
+`sagaId` recebido no `ComandoCobrarPagamento` (coluna `payments.saga_id`, migration V9) e o
+resultado é publicado com ele — o orquestrador descarta evento de outra rodada (ADR-0008).
+Cobrança sem rodada (antiga ou criada por `POST /api/payments/service-order/{id}`) usa o id
+da OS. Consumer com dedupe
 por `messageId` e redrive para **DLQ**. Nomes e campos seguem o contrato executável
 `workbench-messaging/contracts/saga-messages.json` (`BillingSagaContractTest`).
 
