@@ -159,7 +159,7 @@ avisado de algo que não foi gravado. A falha de envio nunca reverte a OS (best-
 | OS vai a `PAGAMENTO_PENDENTE` | Status "Pagamento Pendente": *aguardando a confirmação do pagamento* | Sai pela atualização de status |
 | Cobrança criada | **Link de pagamento** (assunto "Link de Pagamento da sua Ordem de Servico") | Só o link em texto; **não há QR code** |
 | Pagamento confirmado | Status **"Entregue"**: *seu veículo foi entregue* | **Um** e-mail: a OS passa por `PAGO` e `ENTREGUE` na mesma transação |
-| Pagamento recusado | **Nenhum** | A OS não muda de status; o cliente só descobre ao tentar de novo |
+| Pagamento recusado | Aviso **"pagamento não aprovado"** | A OS não muda de status, então este e-mail é o único aviso. Sai **uma vez** por recusa (entrega duplicada do SQS não repete) e **não traz o motivo técnico** do gateway nem link; pede novo link à oficina. Uma recusa depois de `payment-retry` avisa de novo |
 | `payment-retry` | **Novo link** de pagamento | A cobrança nova tem outro link |
 
 Os e-mails de status (`Recebida`, `Em Diagnostico`, `Em Execucao`, `Finalizada`…) saem a cada mudança de
