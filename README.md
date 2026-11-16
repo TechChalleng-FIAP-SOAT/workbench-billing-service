@@ -208,7 +208,9 @@ curl -X POST $G/api/payments/webhook -H 'Content-Type: application/json' \
 ```
 
 Com `PAYMENT_PROVIDER=mercadopago` esse webhook **não existe** (responde 404) e o pagamento só é
-detectado pelo job. Para testar de verdade, use o token de **teste** do Mercado Pago, abra o `checkoutUrl`
+detectado pelo job. Como o webhook simulado não verifica assinatura, o `FakeProviderGuard` **impede o
+serviço de subir** com `fake` fora do perfil `local` (ou de `payment.allow-fake=true`, usado só nos
+testes): um `PAYMENT_PROVIDER=fake` configurado por engano na AWS derruba o start em vez de abrir a rota. Para testar de verdade, use o token de **teste** do Mercado Pago, abra o `checkoutUrl`
 em janela anônima, entre com o usuário **comprador** de teste e pague com um cartão de teste (titular
 `APRO` para aprovado).
 
@@ -357,7 +359,7 @@ pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início
 | `SPRING_DATASOURCE_URL` / `_USERNAME` | Postgres local | Banco próprio do Billing |
 | `SPRING_DATASOURCE_PASSWORD` | — (obrigatório; dev no perfil `local`) | Senha do banco |
 | `JWT_SECRET` | — (obrigatório; dev no perfil `local`) | Segredo HS256 compartilhado |
-| `PAYMENT_PROVIDER` | — (obrigatório; `fake` no perfil `local`) | `fake` (webhook simulado, sem assinatura — só local/testes) ou `mercadopago` (AWS, job de consulta). Sem valor, o serviço não sobe: o webhook aberto nunca aparece por omissão |
+| `PAYMENT_PROVIDER` | — (obrigatório; `fake` no perfil `local`) | `fake` (webhook simulado, sem assinatura — só local/testes) ou `mercadopago` (AWS, job de consulta). Sem valor, o serviço não sobe, e `fake` fora do perfil `local` também não sobe (`FakeProviderGuard`): o webhook aberto nunca aparece por omissão nem por engano |
 | `MP_ACCESS_TOKEN` / `MP_BASE_URL` | — | credenciais do Mercado Pago (quando `mercadopago`) |
 | `MP_NOTIFICATION_URL` | — | (opcional) URL de notificação enviada na preferência; a confirmação não depende dela |
 | `PAYMENT_POLLING_INTERVAL_MS` | `30000` | intervalo do job de consulta ao Mercado Pago |
@@ -446,10 +448,11 @@ sem dono registrado (anterior a essa regra) só é visível ao staff.
 - **Gate JaCoCo 80%** no `verify`.
 - Integração com **Testcontainers PostgreSQL**; gateway em modo `fake` (offline). Um 2º
   teste de integração sobe com `mercadopago` e garante que o webhook simulado **não existe**
-  (404) e que o job de consulta está ativo.
+  (404) e que o job de consulta está ativo. `FakeProviderGuardTest` garante que `fake` só sobe no
+  perfil `local` (ou com `payment.allow-fake=true`).
 - **Teste de contrato da Saga** (`BillingSagaContractTest`): consome o exemplo de
   `ComandoGerarOrcamento` do contrato e confere os campos de tudo o que publica.
-- Cobertura atual (medida em 2026-11-15): **87,2% de linhas** e 72,7% de branches (`target/site/jacoco/index.html`).
+- Cobertura atual (medida em 2026-11-15): **87,2% de linhas** e 73,4% de branches (`target/site/jacoco/index.html`).
 - Evidência por execução do CI: artefato `jacoco-report` do job `unit-test` (relatório HTML) e o Quality Gate do SonarCloud no job `code-analysis`.
 
 ---
