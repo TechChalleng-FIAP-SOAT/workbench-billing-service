@@ -1,0 +1,64 @@
+{
+  "info": {
+    "name": "Workbench - Billing Service",
+    "description": "Collection do microsserviço de Orçamento e Pagamento. Consulta o orçamento gerado pela Saga, cria cobrança (Mercado Pago). A confirmação vem do job de consulta; o webhook de aprovação/recusa só existe com PAYMENT_PROVIDER=fake (local). Variáveis: baseUrl, token, serviceOrderId. baseUrl: http://localhost:8082 (serviço direto, compose local) ou http://localhost:8000 (gateway local). Na AWS os serviços têm NLB interno: use a invoke_url do API Gateway como baseUrl e o token do POST /auth/login.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8082"},
+    {"key": "token", "value": ""},
+    {"key": "serviceOrderId", "value": ""},
+    {"key": "gatewayPaymentId", "value": ""}
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{"key": "token", "value": "{{token}}", "type": "string"}]
+  },
+  "item": [
+    {
+      "name": "Budget",
+      "item": [
+        {
+          "name": "Buscar orçamento por OS",
+          "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/budgets/service-order/{{serviceOrderId}}", "host": ["{{baseUrl}}"], "path": ["api", "budgets", "service-order", "{{serviceOrderId}}"]}}
+        }
+      ]
+    },
+    {
+      "name": "Payment",
+      "item": [
+        {
+          "name": "Criar cobrança para a OS (pagamento pendente)",
+          "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/api/payments/service-order/{{serviceOrderId}}", "host": ["{{baseUrl}}"], "path": ["api", "payments", "service-order", "{{serviceOrderId}}"]}}
+        },
+        {
+          "name": "Buscar cobrança da OS (captura gatewayPaymentId e checkoutUrl)",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) { pm.collectionVariables.set('gatewayPaymentId', pm.response.json().gatewayPaymentId); }"
+          ]}}],
+          "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/payments/service-order/{{serviceOrderId}}", "host": ["{{baseUrl}}"], "path": ["api", "payments", "service-order", "{{serviceOrderId}}"]}}
+        },
+        {
+          "name": "Webhook simulado (só local, PAYMENT_PROVIDER=fake; approved=false recusa)",
+          "request": {
+            "method": "POST",
+            "auth": {"type": "noauth"},
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{baseUrl}}/api/payments/webhook", "host": ["{{baseUrl}}"], "path": ["api", "payments", "webhook"]},
+            "body": {"mode": "raw", "raw": "{\n  \"gatewayPaymentId\": \"{{gatewayPaymentId}}\",\n  \"approved\": true\n}"}
+          }
+        },
+        {
+          "name": "Histórico de pagamento da OS",
+          "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/payments/service-order/{{serviceOrderId}}/history", "host": ["{{baseUrl}}"], "path": ["api", "payments", "service-order", "{{serviceOrderId}}", "history"]}}
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {"name": "Health check", "request": {"method": "GET", "auth": {"type": "noauth"}, "url": {"raw": "{{baseUrl}}/actuator/health", "host": ["{{baseUrl}}"], "path": ["actuator", "health"]}}}
+      ]
+    }
+  ]
+}

@@ -1,5 +1,8 @@
 package com.workbench.workshop.infrastructure.messaging;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +22,17 @@ import java.util.function.Consumer;
 @ConditionalOnProperty(prefix = "messaging", name = "enabled", havingValue = "true")
 @EnableScheduling
 public class MessagingConfig {
+
+    /**
+     * {@link ObjectMapper} usado pelos publishers/consumers da Saga. No Spring
+     * Boot 4 o {@code ObjectMapper} do Jackson 2 não é mais exposto como bean
+     * por autoconfiguração, então o definimos explicitamente aqui.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public ObjectMapper messagingObjectMapper() {
+        return new ObjectMapper().registerModule(new JavaTimeModule());
+    }
 
     @Bean
     public SnsClient snsClient(MessagingProperties props) {

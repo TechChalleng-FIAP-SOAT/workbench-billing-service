@@ -1,10 +1,16 @@
 spring:
   application:
     name: billing-service
+  # Mais de uma thread para os @Scheduled: o consumidor SQS faz long polling e não pode
+  # dividir a única thread padrão com os outros jobs (timeout da Saga, consulta ao gateway).
+  task:
+    scheduling:
+      pool:
+        size: ${SCHEDULING_POOL_SIZE:4}
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:15433/billing}
     username: ${SPRING_DATASOURCE_USERNAME:dbadmin}
-    password: ${SPRING_DATASOURCE_PASSWORD:senha-super-segura}
+    password: ${SPRING_DATASOURCE_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -48,15 +54,26 @@ management:
 server:
   port: 8080
 
+jwt:
+  # Chave PÚBLICA da Lambda de autenticação (RS256), Base64 do DER. Sem padrão: sem ela não sobe.
+  public-key: ${JWT_PUBLIC_KEY}
+
 # Mercado Pago (pagamento).
-#  - provider=fake (default): adapter determinístico, offline (testes/dev).
-#  - provider=mercadopago: integra o sandbox (requer access-token de teste).
+#  - Sem padrão: PAYMENT_PROVIDER é obrigatório (falha fechado — sem ele o serviço não sobe).
+#  - provider=fake (perfil local e testes): adapter determinístico, offline; a
+#    decisão vem do webhook simulado POST /api/payments/webhook (só existe aqui).
+#  - provider=mercadopago: Checkout Pro (sandbox com o Access Token de teste); a
+#    decisão vem do job que consulta GET /v1/payments/search?external_reference=.
 payment:
-  provider: ${PAYMENT_PROVIDER:fake}
+  provider: ${PAYMENT_PROVIDER}
+  # Intervalo do job de consulta ao Mercado Pago (só com provider=mercadopago).
+  polling-interval-ms: ${PAYMENT_POLLING_INTERVAL_MS:30000}
   mercadopago:
     access-token: ${MP_ACCESS_TOKEN:}
+    connect-timeout: ${MP_CONNECT_TIMEOUT:5s}
+    read-timeout: ${MP_READ_TIMEOUT:10s}
     base-url: ${MP_BASE_URL:https://api.mercadopago.com}
-    # URL pública deste serviço para o webhook de notificação.
+    # Opcional: a confirmação é por consulta; só preencha se quiser a notificação do MP.
     notification-url: ${MP_NOTIFICATION_URL:}
 
 # Mensageria (Saga) — mesma convenção dos demais serviços.

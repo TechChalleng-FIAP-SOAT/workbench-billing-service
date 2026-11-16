@@ -1,0 +1,42 @@
+<configuration>
+    <!-- Logs estruturados em JSON para o stdout do container. O Datadog Agent
+         coleta do stdout (annotation ad.datadoghq.com/<container>.logs) e o
+         provider <mdc/> promove saga_id e service_order_id a campos pesquisáveis,
+         permitindo filtrar o fluxo de uma OS ponta a ponta por @saga_id.
+         dd.trace_id/dd.span_id (via DD_LOGS_INJECTION) correlacionam logs e traces. -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp/>
+                <logLevel/>
+                <loggerName/>
+                <threadName/>
+                <message/>
+                <mdc/>
+                <stackTrace/>
+            </providers>
+        </encoder>
+    </appender>
+
+    <!-- Arquivo JSON por serviço, para coleta local pelo Datadog Agent (dev).
+         Configurável por LOG_JSON_FILE. Em container/produção a coleta é via stdout. -->
+    <appender name="JSON_FILE" class="ch.qos.logback.core.FileAppender">
+        <file>${LOG_JSON_FILE:-/tmp/workbench/billing-service.log}</file>
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp/>
+                <logLevel/>
+                <loggerName/>
+                <threadName/>
+                <message/>
+                <mdc/>
+                <stackTrace/>
+            </providers>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="JSON_FILE"/>
+    </root>
+</configuration>

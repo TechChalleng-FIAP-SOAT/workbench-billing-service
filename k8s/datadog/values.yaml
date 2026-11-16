@@ -1,0 +1,57 @@
+# Helm values para o chart oficial datadog/datadog — enxuto para um node group
+# pequeno (ex.: um único t3.small). Mantém o que a observabilidade do serviço
+# precisa:
+#   * Node Agent (DaemonSet) — kubernetes.cpu/memory.* (via kubelet), logs, APM intake
+#   * Cluster Agent — admission controller que injeta o dd-java-agent (traces APM)
+# Desligado para poupar CPU/memória: kube-state-metrics, process agent,
+# orchestrator explorer.
+#
+#   helm repo add datadog https://helm.datadoghq.com
+#   kubectl create secret generic datadog-secret \
+#     --namespace datadog --from-literal api-key="$DD_API_KEY"
+#   helm upgrade --install datadog datadog/datadog \
+#     --namespace datadog --create-namespace -f k8s/datadog/values.yaml
+datadog:
+  # A API key é lida de um secret pré-criado para nunca viver no git.
+  # O nome da chave do secret DEVE ser "api-key".
+  apiKeyExistingSecret: datadog-secret
+  site: datadoghq.com
+  clusterName: workbench-platform
+  kubeStateMetricsEnabled: false
+  orchestratorExplorer:
+    enabled: false
+  processAgent:
+    enabled: false
+  logs:
+    enabled: true
+    containerCollectAll: false
+  apm:
+    portEnabled: true
+
+agents:
+  containers:
+    agent:
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 512Mi
+    traceAgent:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+
+clusterAgent:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 384Mi
+  admissionController:
+    enabled: true
+    mutateUnlabelled: false

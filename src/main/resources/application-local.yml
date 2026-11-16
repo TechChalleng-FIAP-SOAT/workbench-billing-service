@@ -1,0 +1,15 @@
+# Perfil local (IDE e docker compose): valores de DESENVOLVIMENTO.
+# Fora dele não há valor padrão: sem JWT_SECRET, SPRING_DATASOURCE_PASSWORD ou PAYMENT_PROVIDER o serviço não sobe.
+# Ative com SPRING_PROFILES_ACTIVE=local (o compose do workbench-messaging já ativa).
+spring:
+  datasource:
+    password: ${SPRING_DATASOURCE_PASSWORD:senha-super-segura}
+
+# Chaves JWT de DESENVOLVIMENTO. A pública do login vem de JWT_PUBLIC_KEY, gerada por máquina em
+# workbench-messaging (scripts/dev-keys.sh grava no .env do compose); nunca usar na AWS.
+jwt:
+  public-key: ${JWT_PUBLIC_KEY}
+
+# Pagamento simulado (webhook aberto, sem assinatura): só existe neste perfil ou em testes.
+payment:
+  provider: ${PAYMENT_PROVIDER:fake}

@@ -15,10 +15,17 @@ class FakePaymentGatewayAdapterTest {
     @Test
     void createChargeReturnsSyntheticId() {
         PaymentGatewayPort.GatewayCharge charge =
-                adapter.createCharge(UUID.randomUUID(), new BigDecimal("99.90"));
+                adapter.createCharge(UUID.randomUUID().toString(), new BigDecimal("99.90"));
 
         assertNotNull(charge.gatewayPaymentId());
         assertTrue(charge.gatewayPaymentId().startsWith("FAKE-"));
         assertNotNull(charge.checkoutUrl());
+    }
+
+    @Test
+    void findPaymentIsAlwaysPending() {
+        // No fake, quem decide é o webhook simulado.
+        assertEquals(PaymentGatewayPort.GatewayPaymentStatus.PENDING,
+                adapter.findPayment(UUID.randomUUID().toString()).status());
     }
 }

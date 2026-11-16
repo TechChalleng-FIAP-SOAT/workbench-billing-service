@@ -15,6 +15,7 @@ public class BudgetEntity {
     @SequenceGenerator(name = "budget_seq", sequenceName = "budget_seq", allocationSize = 50)
     private Long id;
     @Column(nullable = false, unique = true) private UUID serviceOrderId;
+    @Column(name = "customer_document", length = 14) private String customerDocument;
     @Column(name = "total_parts", nullable = false) private BigDecimal totalParts = BigDecimal.ZERO;
     @Column(name = "total_labor", nullable = false) private BigDecimal totalLabor = BigDecimal.ZERO;
     @Column(nullable = false) private BigDecimal totalPrice = BigDecimal.ZERO;

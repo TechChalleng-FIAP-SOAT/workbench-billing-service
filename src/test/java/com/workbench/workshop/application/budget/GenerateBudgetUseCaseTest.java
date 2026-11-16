@@ -39,7 +39,7 @@ class GenerateBudgetUseCaseTest {
         var labor = List.of(
                 new GenerateBudgetUseCase.LaborInput("DISCO E PASTILHA", "00", new BigDecimal("200.00"))); // 200
 
-        Budget budget = useCase.execute(osId, parts, labor);
+        Budget budget = useCase.execute(osId, "52998224725", parts, labor);
 
         assertEquals(0, new BigDecimal("130.00").compareTo(budget.getTotalParts()));
         assertEquals(0, new BigDecimal("200.00").compareTo(budget.getTotalLabor()));
@@ -55,7 +55,7 @@ class GenerateBudgetUseCaseTest {
         var parts = List.of(new GenerateBudgetUseCase.PartInput("1", "X", "S", null, ItemType.PART,
                 new BigDecimal("10.00"), new BigDecimal("1")));
 
-        Budget budget = useCase.execute(osId, parts, List.of());
+        Budget budget = useCase.execute(osId, "52998224725", parts, List.of());
 
         assertEquals(0, new BigDecimal("10.00").compareTo(budget.getTotalParts()));
         assertEquals(0, BigDecimal.ZERO.compareTo(budget.getTotalLabor()));
@@ -64,13 +64,12 @@ class GenerateBudgetUseCaseTest {
 
     @Test
     void regeneratesExistingBudget() {
-        Budget existing = new Budget();
-        existing.setId(5L);
-        existing.setServiceOrderId(osId);
+        Budget existing = Budget.reconstitute(5L, osId, "52998224725", BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, List.of(), null, null);
         when(budgetRepository.findByServiceOrderId(osId)).thenReturn(Optional.of(existing));
 
         var labor = List.of(new GenerateBudgetUseCase.LaborInput("MO", "01", new BigDecimal("80.00")));
-        Budget budget = useCase.execute(osId, List.of(), labor);
+        Budget budget = useCase.execute(osId, "52998224725", List.of(), labor);
 
         assertEquals(5L, budget.getId());
         assertEquals(0, new BigDecimal("80.00").compareTo(budget.getTotalLabor()));

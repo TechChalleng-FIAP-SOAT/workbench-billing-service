@@ -1,0 +1,50 @@
+# PostgreSQL in-cluster — OPCIONAL, só para testar o billing-service num cluster SEM o RDS.
+#
+# NÃO é aplicado pelo pipeline: na AWS o banco é o RDS do workbench-database, com a URL
+# e as credenciais vindas do Secret. Para o desenvolvimento local, o Postgres já sobe
+# pelo workbench-messaging/docker-compose.dev.yml.
+#
+# Uso manual (cluster de teste):
+#   kubectl apply -f k8s/postgres-local.yaml
+#   # e aponte SPRING_DATASOURCE_URL para jdbc:postgresql://billing-db:5432/billing
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-db
+  namespace: billing-service
+  labels:
+    app: billing-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-db
+  template:
+    metadata:
+      labels:
+        app: billing-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: billing
+            - name: POSTGRES_USER
+              value: dbadmin
+            - name: POSTGRES_PASSWORD
+              value: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-db
+  namespace: billing-service
+spec:
+  selector:
+    app: billing-db
+  ports:
+    - port: 5432
+      targetPort: 5432

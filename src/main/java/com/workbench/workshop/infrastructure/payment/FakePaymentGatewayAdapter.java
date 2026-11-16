@@ -9,21 +9,32 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Gateway de pagamento FALSO (default, {@code payment.provider=fake}).
+ * Gateway de pagamento FALSO ({@code payment.provider=fake}: perfil local e testes).
  *
  * <p>Determinístico e offline — usado em testes/dev e para demonstrar a Saga sem
  * depender do Mercado Pago. Gera um id de cobrança sintético; o resultado
- * (aprovado/recusado) é simulado chamando o webhook manualmente ou pela Saga.
+ * (aprovado/recusado) é simulado chamando o webhook manualmente.
  */
 @Component
-@ConditionalOnProperty(prefix = "payment", name = "provider", havingValue = "fake", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "payment", name = "provider", havingValue = "fake")
 @Slf4j
 public class FakePaymentGatewayAdapter implements PaymentGatewayPort {
 
     @Override
-    public GatewayCharge createCharge(UUID serviceOrderId, BigDecimal amount) {
+    public GatewayCharge createCharge(String chargeReference, BigDecimal amount) {
         String id = "FAKE-" + UUID.randomUUID();
-        log.info("[FAKE gateway] cobrança criada: os={}, amount={}, gatewayId={}", serviceOrderId, amount, id);
+        log.info("[FAKE gateway] cobrança criada: ref={}, amount={}, gatewayId={}", chargeReference, amount, id);
         return new GatewayCharge(id, "https://fake-checkout.local/" + id);
+    }
+
+    /** No fake a decisão vem do webhook simulado, nunca da consulta. */
+    @Override
+    public GatewayPaymentResult findPayment(String chargeReference) {
+        return GatewayPaymentResult.pending();
+    }
+
+    @Override
+    public void refund(String transactionId) {
+        log.info("[FAKE gateway] estorno simulado: transactionId={}", transactionId);
     }
 }

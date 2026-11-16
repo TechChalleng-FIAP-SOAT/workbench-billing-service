@@ -1,7 +1,8 @@
 package com.workbench.workshop.infrastructure.messaging;
 
 import com.workbench.workshop.application.budget.GenerateBudgetUseCase;
-import com.workbench.workshop.application.payment.PaymentUseCases;
+import com.workbench.workshop.application.payment.CreatePaymentUseCase;
+import com.workbench.workshop.application.payment.RefundPaymentUseCase;
 import com.workbench.workshop.domain.budget.Budget;
 import com.workbench.workshop.domain.payment.Payment;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -21,7 +23,8 @@ import static org.mockito.Mockito.*;
 class SagaCommandHandlerTest {
 
     private GenerateBudgetUseCase generateBudgetUseCase;
-    private PaymentUseCases paymentUseCases;
+    private CreatePaymentUseCase createPayment;
+    private RefundPaymentUseCase refundPayment;
     private BillingEventPublisher publisher;
     private SagaCommandHandler handler;
 
@@ -30,9 +33,10 @@ class SagaCommandHandlerTest {
     @BeforeEach
     void setUp() {
         generateBudgetUseCase = mock(GenerateBudgetUseCase.class);
-        paymentUseCases = mock(PaymentUseCases.class);
+        createPayment = mock(CreatePaymentUseCase.class);
+        refundPayment = mock(RefundPaymentUseCase.class);
         publisher = mock(BillingEventPublisher.class);
-        handler = new SagaCommandHandler(generateBudgetUseCase, paymentUseCases, publisher);
+        handler = new SagaCommandHandler(generateBudgetUseCase, createPayment, refundPayment, publisher);
     }
 
     private MessageEnvelope cmd(String type, Map<String, Object> payload) {
@@ -40,13 +44,10 @@ class SagaCommandHandlerTest {
     }
 
     @Test
-    void gerarOrcamentoPublishesOrcamentoGerado() {
-        Budget b = new Budget();
-        b.setId(10L);
-        b.setTotalParts(new BigDecimal("100.00"));
-        b.setTotalLabor(new BigDecimal("200.00"));
-        b.setTotalPrice(new BigDecimal("300.00"));
-        when(generateBudgetUseCase.execute(eq(osId), any(), any())).thenReturn(b);
+    void generateBudgetPublishesBudgetGenerated() {
+        Budget b = Budget.reconstitute(10L, osId, "52998224725", new BigDecimal("100.00"),
+                new BigDecimal("200.00"), new BigDecimal("300.00"), List.of(), null, null);
+        when(generateBudgetUseCase.execute(eq(osId), any(), any(), any())).thenReturn(b);
 
         var payload = Map.<String, Object>of(
                 "parts", List.of(Map.of(
@@ -62,8 +63,56 @@ class SagaCommandHandlerTest {
     }
 
     @Test
-    void gerarOrcamentoPublishesOrcamentoFalhouOnError() {
-        when(generateBudgetUseCase.execute(eq(osId), any(), any()))
+    void malformedPartRepliesBudgetFailed() {
+        // itemType ausente: antes ia para a DLQ sem resposta; agora é OrcamentoFalhou.
+        var payload = Map.<String, Object>of(
+                "parts", List.of(Map.of("productId", "1", "unitPrice", "10", "quantity", "1")),
+                "labor", List.of());
+        handler.handle(cmd("ComandoGerarOrcamento", payload));
+
+        ArgumentCaptor<MessageEnvelope> captor = ArgumentCaptor.forClass(MessageEnvelope.class);
+        verify(publisher).publish(captor.capture());
+        assertEquals("OrcamentoFalhou", captor.getValue().type());
+        verifyNoInteractions(generateBudgetUseCase);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void missingOptionalFieldsStayNullInsteadOfTheTextNull() {
+        // Produto fora do catálogo: o Execution manda a peça sem sku/brand.
+        Budget b = Budget.reconstitute(10L, osId, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                List.of(), null, null);
+        when(generateBudgetUseCase.execute(eq(osId), any(), any(), any())).thenReturn(b);
+        var payload = Map.<String, Object>of(
+                "parts", List.of(Map.of("productId", "1", "name", "Produto 1", "itemType", "PART",
+                        "unitPrice", "0", "quantity", "1")),
+                "labor", List.of());
+
+        handler.handle(cmd("ComandoGerarOrcamento", payload));
+
+        ArgumentCaptor<List<GenerateBudgetUseCase.PartInput>> parts = ArgumentCaptor.forClass(List.class);
+        verify(generateBudgetUseCase).execute(eq(osId), any(), parts.capture(), any());
+        assertNull(parts.getValue().get(0).sku());
+        assertNull(parts.getValue().get(0).brand());
+    }
+
+    @Test
+    void missingRequiredFieldRepliesBudgetFailed() {
+        var payload = Map.<String, Object>of(
+                "parts", List.of(),
+                "labor", List.of(Map.of("serviceName", "ALINHAMENTO"))); // sem laborCost
+        handler.handle(cmd("ComandoGerarOrcamento", payload));
+
+        ArgumentCaptor<MessageEnvelope> captor = ArgumentCaptor.forClass(MessageEnvelope.class);
+        verify(publisher).publish(captor.capture());
+        assertEquals("OrcamentoFalhou", captor.getValue().type());
+        assertEquals("Campo obrigatório ausente no item de mão de obra: laborCost", captor.getValue().payload().get("reason"));
+        verifyNoInteractions(generateBudgetUseCase);
+    }
+
+    @Test
+    void generateBudgetPublishesBudgetFailedOnError() {
+        when(generateBudgetUseCase.execute(eq(osId), any(), any(), any()))
                 .thenThrow(new RuntimeException("itens inválidos"));
 
         var payload = Map.<String, Object>of("parts", List.of(), "labor", List.of());
@@ -75,23 +124,25 @@ class SagaCommandHandlerTest {
     }
 
     @Test
-    void cobrarPagamentoPublishesCobrancaCriada() {
-        Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1");
-        when(paymentUseCases.createPayment(osId)).thenReturn(p);
+    void chargePaymentPublishesChargeCreated() {
+        Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1", "http://checkout/GW-1");
+        when(createPayment.execute(osId, "saga-1")).thenReturn(p);
 
         handler.handle(cmd("ComandoCobrarPagamento", Map.of()));
 
+        // A rodada do comando vai para a cobrança (volta no PagamentoConfirmado).
+        verify(createPayment).execute(osId, "saga-1");
         ArgumentCaptor<MessageEnvelope> captor = ArgumentCaptor.forClass(MessageEnvelope.class);
         verify(publisher).publish(captor.capture());
         assertEquals("CobrancaCriada", captor.getValue().type());
     }
 
     @Test
-    void estornarPublishesPagamentoEstornado() {
-        Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1");
-        p.approve();
+    void refundPublishesPaymentRefunded() {
+        Payment p = Payment.create(osId, 1L, new BigDecimal("100.00"), "GW-1", "http://checkout/GW-1");
+        p.approve(null);
         p.refund();
-        when(paymentUseCases.refund(osId)).thenReturn(p);
+        when(refundPayment.execute(osId)).thenReturn(p);
 
         handler.handle(cmd("ComandoEstornarPagamento", Map.of()));
 
