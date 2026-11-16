@@ -322,7 +322,7 @@ unit-test ──▶ code-analysis ──▶ build ──▶ docker-build-push �
 
 Secrets/variáveis comuns aos serviços (`DOCKER_*`, `SONAR_TOKEN`, `AWS_*`, `USE_AWS`) —
 ver o README do `workbench-os-service`. Próprios deste serviço: `DB_URL_BILLING_<ENV>`,
-`DB_USERNAME_BILLING`, `DB_PASSWORD_BILLING`, `JWT_SECRET` e **`MP_ACCESS_TOKEN`
+`DB_USERNAME_BILLING`, `DB_PASSWORD_BILLING`, `JWT_PUBLIC_KEY` e **`MP_ACCESS_TOKEN`
 (obrigatório)** — o deploy usa `PAYMENT_PROVIDER=mercadopago` (`k8s/configmap.yaml`), com
 o Access Token de teste (`APP_USR-…`) do Mercado Pago. O job `deploy-aws` monta o Secret do
 pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início se faltar algum.
@@ -350,7 +350,7 @@ pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-> **Sem valores padrão para segredos.** Fora do perfil `local` (`JWT_SECRET`, a senha do banco e `PAYMENT_PROVIDER`) são
+> **Sem valores padrão para segredos.** Fora do perfil `local` (`JWT_PUBLIC_KEY`, a senha do banco e `PAYMENT_PROVIDER`) são
 > obrigatórios: sem eles o serviço não sobe. O perfil `local` (`application-local.yml`)
 > traz os valores de desenvolvimento e é ativado pelo compose do `workbench-messaging`.
 
@@ -358,7 +358,7 @@ pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início
 |---|---|---|
 | `SPRING_DATASOURCE_URL` / `_USERNAME` | Postgres local | Banco próprio do Billing |
 | `SPRING_DATASOURCE_PASSWORD` | — (obrigatório; dev no perfil `local`) | Senha do banco |
-| `JWT_SECRET` | — (obrigatório; dev no perfil `local`) | Segredo HS256 compartilhado |
+| `JWT_PUBLIC_KEY` | — (obrigatório; dev no perfil `local`) | Chave **pública** RS256 da Lambda de login: o serviço verifica token, não emite |
 | `PAYMENT_PROVIDER` | — (obrigatório; `fake` no perfil `local`) | `fake` (webhook simulado, sem assinatura — só local/testes) ou `mercadopago` (AWS, job de consulta). Sem valor, o serviço não sobe, e `fake` fora do perfil `local` também não sobe (`FakeProviderGuard`): o webhook aberto nunca aparece por omissão nem por engano |
 | `MP_ACCESS_TOKEN` / `MP_BASE_URL` | — | credenciais do Mercado Pago (quando `mercadopago`) |
 | `MP_NOTIFICATION_URL` | — | (opcional) URL de notificação enviada na preferência; a confirmação não depende dela |
@@ -390,7 +390,7 @@ O que os manifests garantem:
 ## Segurança (JWT)
 
 Defesa em profundidade: o serviço **valida o JWT por conta própria** (Spring Security +
-filtro HS256 com o `JWT_SECRET` compartilhado), inclusive nas chamadas internas — não
+filtro RS256 com a chave pública da Lambda), inclusive nas chamadas internas — não
 depende do API Gateway. Tokens de staff carregam `roles` (ADMIN/TECHNICIAN); tokens de
 cliente carregam `clientId` → `ROLE_CLIENT`.
 
@@ -452,7 +452,7 @@ sem dono registrado (anterior a essa regra) só é visível ao staff.
   perfil `local` (ou com `payment.allow-fake=true`).
 - **Teste de contrato da Saga** (`BillingSagaContractTest`): consome o exemplo de
   `ComandoGerarOrcamento` do contrato e confere os campos de tudo o que publica.
-- Cobertura atual (medida em 2026-11-15): **87,2% de linhas** e 73,4% de branches (`target/site/jacoco/index.html`).
+- Cobertura atual (medida em 2026-11-16): **86,7% de linhas** e 72,7% de branches (`target/site/jacoco/index.html`).
 - Evidência por execução do CI: artefato `jacoco-report` do job `unit-test` (relatório HTML) e o Quality Gate do SonarCloud no job `code-analysis`.
 
 ---

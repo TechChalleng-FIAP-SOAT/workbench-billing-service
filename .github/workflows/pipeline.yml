@@ -121,7 +121,8 @@ jobs:
       DB_URL_BILLING: ${{ github.ref_name == 'main' && secrets.DB_URL_BILLING_MAIN || secrets.DB_URL_BILLING_DEVELOP }}
       DB_USERNAME_BILLING: ${{ secrets.DB_USERNAME_BILLING || 'billing' }}
       DB_PASSWORD_BILLING: ${{ secrets.DB_PASSWORD_BILLING }}
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      # JWT RS256: só a chave PÚBLICA (o serviço verifica, não emite token).
+      JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
       MP_ACCESS_TOKEN: ${{ secrets.MP_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -129,7 +130,7 @@ jobs:
         run: |
           missing=0
           # MP_ACCESS_TOKEN é obrigatório: o configmap usa PAYMENT_PROVIDER=mercadopago.
-          for v in DB_URL_BILLING DB_USERNAME_BILLING DB_PASSWORD_BILLING JWT_SECRET MP_ACCESS_TOKEN; do
+          for v in DB_URL_BILLING DB_USERNAME_BILLING DB_PASSWORD_BILLING JWT_PUBLIC_KEY MP_ACCESS_TOKEN; do
             if [ -z "${!v}" ]; then
               case "${v}" in
                 DB_URL_*) src="${v}_MAIN / ${v}_DEVELOP" ;;
@@ -196,7 +197,7 @@ jobs:
             --from-literal SPRING_DATASOURCE_URL="${DB_URL_BILLING}" \
             --from-literal SPRING_DATASOURCE_USERNAME="${DB_USERNAME_BILLING}" \
             --from-literal SPRING_DATASOURCE_PASSWORD="${DB_PASSWORD_BILLING}" \
-            --from-literal JWT_SECRET="${JWT_SECRET}" \
+            --from-literal JWT_PUBLIC_KEY="${JWT_PUBLIC_KEY}" \
             --from-literal MP_ACCESS_TOKEN="${MP_ACCESS_TOKEN}" \
             --from-literal DD_API_KEY="${DD_API_KEY}" \
             --dry-run=client -o yaml | kubectl apply -f -

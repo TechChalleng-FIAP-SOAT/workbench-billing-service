@@ -54,10 +54,9 @@ management:
 server:
   port: 8080
 
-# JWT (HS256) — mesmo secret compartilhado pela plataforma (Lambda/os-service).
-# O Billing valida o token; não o emite.
 jwt:
-  secret: ${JWT_SECRET}
+  # Chave PÚBLICA da Lambda de autenticação (RS256), Base64 do DER. Sem padrão: sem ela não sobe.
+  public-key: ${JWT_PUBLIC_KEY}
 
 # Mercado Pago (pagamento).
 #  - Sem padrão: PAYMENT_PROVIDER é obrigatório (falha fechado — sem ele o serviço não sobe).
