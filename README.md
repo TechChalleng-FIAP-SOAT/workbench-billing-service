@@ -16,6 +16,7 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
 
 - [Responsabilidades](#responsabilidades)
 - [Requisitos obrigatórios do PDF cobertos aqui](#requisitos-obrigatórios-do-pdf-cobertos-aqui)
+- [Fluxo de pagamento](#fluxo-de-pagamento)
 - [Integração Mercado Pago (via porta)](#integração-mercado-pago-via-porta)
 - [Participação na Saga](#participação-na-saga)
 - [Arquitetura da aplicação (hexagonal)](#arquitetura-da-aplicação-hexagonal)
@@ -59,6 +60,158 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
 
 ---
 
+## Fluxo de pagamento
+
+Esta seção explica **como o pagamento acontece, quando acontece e quem faz o quê**: da OS
+finalizada até o cliente pagar, incluindo o que o cliente recebe por e-mail em cada etapa. Os
+três serviços participam: o **OS Service** orquestra, o **Billing** cobra e consulta o gateway,
+e o **Mercado Pago** recebe o dinheiro. Nenhum serviço fala direto com outro: tudo passa por
+mensagens (SNS/SQS) da Saga.
+
+### Visão geral
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Staff as Oficina (staff)
+    actor Cliente
+    participant OS as OS Service<br/>(orquestrador)
+    participant SQS as SNS / SQS
+    participant BIL as Billing Service
+    participant MP as Mercado Pago
+    participant MAIL as E-mail<br/>(SES ou SNS)
+
+    Staff->>OS: PATCH /order/{id} → PAGAMENTO_PENDENTE
+    Note over OS: Todos os serviços da OS estão DONE.<br/>A OS foi para FINALIZADA antes.
+    OS-->>MAIL: e-mail: status "Pagamento Pendente"
+    OS->>SQS: ComandoCobrarPagamento (sagaId da rodada)
+    SQS->>BIL: entrega o comando
+    BIL->>MP: POST /checkout/preferences<br/>(valor do orçamento, external_reference = id da OS)
+    MP-->>BIL: id da preferência + init_point (link)
+    Note over BIL: Grava o pagamento PENDENTE<br/>e o sagaId da rodada (payments.saga_id)
+    BIL->>SQS: CobrancaCriada (checkoutUrl)
+    SQS->>OS: entrega a resposta
+    OS-->>MAIL: e-mail: LINK DE PAGAMENTO
+    MAIL-->>Cliente: link do checkout
+
+    Cliente->>MP: abre o link e paga (meios habilitados na conta)
+
+    loop a cada 30 s (job com lock)
+        BIL->>MP: GET /v1/payments/search?external_reference={ref}
+        MP-->>BIL: lista de tentativas de pagamento
+    end
+    Note over BIL: approved → PAGAMENTO_APROVADO<br/>guarda o id da transação (usado no estorno)
+
+    BIL->>SQS: PagamentoConfirmado (mesmo sagaId da cobrança)
+    SQS->>OS: entrega o evento
+    Note over OS: Confere o sagaId: se for de outra rodada, descarta.
+    OS->>OS: OS → PAGO → ENTREGUE · Saga CONCLUIDA
+    OS-->>MAIL: e-mail: status "Entregue"
+    MAIL-->>Cliente: confirmação
+```
+
+### Quando cada coisa acontece
+
+| Momento | Gatilho | O que ocorre |
+|---|---|---|
+| **A cobrança é criada** | A OS entra em `PAGAMENTO_PENDENTE` (staff, via `PATCH /order/{id}`) | O OS Service envia `ComandoCobrarPagamento`; o Billing cria a preferência no Mercado Pago e responde `CobrancaCriada` com o link. Ninguém chama a API de pagamento à mão |
+| **O cliente recebe o link** | Resposta `CobrancaCriada` chega ao OS Service | E-mail com o link (e o `checkoutUrl` também fica em `GET /api/payments/service-order/{id}`) |
+| **O pagamento é detectado** | Job do Billing, **a cada 30 s** | Consulta o Mercado Pago pela `external_reference`; achando um pagamento `approved`, confirma |
+| **A OS é entregue** | Evento `PagamentoConfirmado` aceito | A OS vai a `PAGO` e `ENTREGUE` na mesma transação; a Saga fecha em `CONCLUIDA` |
+| **O pagamento é recusado** | Mercado Pago devolve a tentativa como `cancelled` | Billing marca `RECUSADO` e publica `PagamentoFalhou`; a OS **fica em `PAGAMENTO_PENDENTE`** com o motivo na Saga |
+| **Nova cobrança** | `POST /order/{id}/payment-retry` (cliente dono ou staff) | Gera uma cobrança **nova** (referência `<OS>-2`, `<OS>-3`…) e um novo link |
+
+Quem **detecta** o pagamento é o Billing, por consulta. O Mercado Pago **não** avisa o sistema (não há
+webhook público): é o Billing que pergunta. Isso evita expor um endpoint de pagamento na internet
+e dispensa URL pública para o Mercado Pago chamar.
+
+### Estados do pagamento
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDENTE: cobrança criada no gateway
+    PENDENTE --> PAGAMENTO_APROVADO: gateway aprovou
+    PENDENTE --> RECUSADO: gateway cancelou
+    RECUSADO --> PENDENTE: payment-retry (nova cobrança, tentativa +1)
+    PAGAMENTO_APROVADO --> ESTORNADO: compensação (estorno no gateway)
+    ESTORNADO --> [*]
+    PAGAMENTO_APROVADO --> [*]
+```
+
+| Estado | Significa | O que o histórico registra |
+|---|---|---|
+| `PENDENTE` | Cobrança criada, esperando o cliente pagar | "Cobrança criada no gateway: `<id>`" |
+| `PAGAMENTO_APROVADO` | O Mercado Pago aprovou; o id da transação foi guardado | "Consulta ao gateway: aprovado" |
+| `RECUSADO` | A tentativa foi cancelada no Mercado Pago | "Consulta ao gateway: recusado" |
+| `ESTORNADO` | O dinheiro foi devolvido (compensação) | "Estorno (compensação da Saga)" |
+
+No Checkout Pro o cliente pode errar o cartão e tentar de novo **no mesmo link**. Por isso uma tentativa
+`rejected` **não** encerra a cobrança: só um `approved` (em qualquer tentativa) aprova, e só um
+`cancelled` na tentativa mais recente recusa. O resto continua `PENDENTE`.
+
+### E-mails do cliente durante o pagamento
+
+O OS Service envia o e-mail **depois do commit** do banco (`AfterCommit`), então o cliente nunca é
+avisado de algo que não foi gravado. A falha de envio nunca reverte a OS (best-effort).
+
+| Momento | E-mail | Observação |
+|---|---|---|
+| OS vai a `PAGAMENTO_PENDENTE` | Status "Pagamento Pendente": *aguardando a confirmação do pagamento* | Sai pela atualização de status |
+| Cobrança criada | **Link de pagamento** (assunto "Link de Pagamento da sua Ordem de Servico") | Só o link em texto; **não há QR code** |
+| Pagamento confirmado | Status **"Entregue"**: *seu veículo foi entregue* | **Um** e-mail: a OS passa por `PAGO` e `ENTREGUE` na mesma transação |
+| Pagamento recusado | **Nenhum** | A OS não muda de status; o cliente só descobre ao tentar de novo |
+| `payment-retry` | **Novo link** de pagamento | A cobrança nova tem outro link |
+
+Os e-mails de status (`Recebida`, `Em Diagnostico`, `Em Execucao`, `Finalizada`…) saem a cada mudança de
+status feita pela API. As transições feitas **pela Saga** (aprovação do orçamento, por exemplo) não
+notificam. Isso é uma limitação conhecida.
+
+**Para quem o e-mail vai** depende do canal (`NOTIFICATION_CHANNEL` no OS Service):
+
+| Canal | Destinatário |
+|---|---|
+| `sns` (padrão) | Quem estiver **inscrito no tópico** (um endereço fixo): serve para demonstração, **não chega ao cliente** |
+| `ses` | O **e-mail cadastrado do cliente** no Customer Service. Cliente sem e-mail não recebe (fica no log). Conta SES nova está em *sandbox*: só envia para endereços verificados |
+
+Detalhes e como ligar o SES: README do OS Service, seção *E-mail ao cliente: SNS × SES*.
+
+### Por que a Saga confia no `sagaId`
+
+O OS Service só aceita uma resposta com o `sagaId` da **rodada atual** da Saga (uma OS que falha e é
+diagnosticada de novo abre uma rodada nova). `PagamentoConfirmado` **não responde a um comando**: ele sai
+do job de consulta, depois de minutos. Por isso o Billing guarda o `sagaId` do `ComandoCobrarPagamento`
+na cobrança (`payments.saga_id`, migration V9) e o usa ao publicar o resultado. Sem isso, o evento era
+descartado como "de outra rodada" e a OS ficava eternamente em `PAGAMENTO_PENDENTE`.
+
+### Quando algo dá errado
+
+| Situação | O que acontece |
+|---|---|
+| Mercado Pago fora do ar ao criar a cobrança | O comando falha e volta para a fila. Após **3 tentativas** vai para a **DLQ** (alarme no CloudWatch). O OS Service também **reenvia** um comando sem resposta após 60 s |
+| Mercado Pago fora do ar na consulta | O job registra o aviso e tenta o **próximo ciclo** (30 s). Os demais pagamentos não são afetados |
+| Duas réplicas do Billing | O job usa **ShedLock**: roda em uma só. A criação da cobrança trava a linha do orçamento (`SELECT … FOR UPDATE`): não cobra duas vezes |
+| Comando de cobrança repetido (SQS entrega "pelo menos uma vez") | Idempotente: devolve a cobrança existente sem chamar o gateway |
+| `PagamentoConfirmado` chega fora de hora (Saga fora de `AGUARDANDO_PAGAMENTO`, ou de outra rodada) | O OS Service **descarta** o evento e registra um aviso no log. O que o Billing faz com um pagamento aprovado cuja OS já não aguarda pagamento **não foi testado** |
+| Estorno (compensação) | O Billing sabe estornar (`ComandoEstornarPagamento`, id da transação no Mercado Pago), mas **o OS Service ainda não envia esse comando** em nenhum fluxo: está implementado só deste lado |
+
+### Como testar sem o Mercado Pago
+
+Com `PAYMENT_PROVIDER=fake` (padrão no perfil `local`) o gateway é simulado e existe um webhook **só
+para desenvolvimento**, que faz o papel do cliente pagando:
+
+```bash
+# 1) leve uma OS até PAGAMENTO_PENDENTE (Saga Ponta a Ponta); a cobrança sai sozinha
+GPID=$(curl -s -H "Authorization: Bearer $STAFF" $G/api/payments/service-order/$OS | jq -r .gatewayPaymentId)
+# 2) simule o pagamento: aprovado ou recusado (sem token)
+curl -X POST $G/api/payments/webhook -H 'Content-Type: application/json' \
+  -d "{\"gatewayPaymentId\":\"$GPID\",\"approved\":true}"
+```
+
+Com `PAYMENT_PROVIDER=mercadopago` esse webhook **não existe** (responde 404) e o pagamento só é
+detectado pelo job. Para testar de verdade, use o token de **teste** do Mercado Pago, abra o `checkoutUrl`
+em janela anônima, entre com o usuário **comprador** de teste e pague com um cartão de teste (titular
+`APRO` para aprovado).
+
 ## Integração Mercado Pago (via porta)
 
 `PaymentGatewayPort` com adapters intercambiáveis (`payment.provider`):
@@ -87,7 +240,7 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
 - **`fake` (local):** a decisão vem do **webhook simulado** `POST /api/payments/webhook`
   (`{"gatewayPaymentId": "...", "approved": true}`), que só existe com esse provider.
 
-Trocar sandbox→produção é apenas `MP_ACCESS_TOKEN` (`TEST-...` → `APP_USR-...`) — **sem
+Trocar sandbox→produção é apenas `MP_ACCESS_TOKEN` (credencial de teste → credencial de produção; **ambas** começam com `APP_USR-`) — **sem
 mudança de código**.
 
 ---
@@ -169,7 +322,7 @@ Secrets/variáveis comuns aos serviços (`DOCKER_*`, `SONAR_TOKEN`, `AWS_*`, `US
 ver o README do `workbench-os-service`. Próprios deste serviço: `DB_URL_BILLING_<ENV>`,
 `DB_USERNAME_BILLING`, `DB_PASSWORD_BILLING`, `JWT_SECRET` e **`MP_ACCESS_TOKEN`
 (obrigatório)** — o deploy usa `PAYMENT_PROVIDER=mercadopago` (`k8s/configmap.yaml`), com
-o access token de teste `TEST-...` do Mercado Pago. O job `deploy-aws` monta o Secret do
+o Access Token de teste (`APP_USR-…`) do Mercado Pago. O job `deploy-aws` monta o Secret do
 pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início se faltar algum.
 
 ---

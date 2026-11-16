@@ -63,7 +63,7 @@ jwt:
 #  - Sem padrão: PAYMENT_PROVIDER é obrigatório (falha fechado — sem ele o serviço não sobe).
 #  - provider=fake (perfil local e testes): adapter determinístico, offline; a
 #    decisão vem do webhook simulado POST /api/payments/webhook (só existe aqui).
-#  - provider=mercadopago: Checkout Pro (sandbox com access-token TEST-...); a
+#  - provider=mercadopago: Checkout Pro (sandbox com o Access Token de teste); a
 #    decisão vem do job que consulta GET /v1/payments/search?external_reference=.
 payment:
   provider: ${PAYMENT_PROVIDER}
