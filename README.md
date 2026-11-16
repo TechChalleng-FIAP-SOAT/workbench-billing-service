@@ -39,7 +39,7 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
   total de peças, total de MO e total geral.
 - **Pagamento**: ocorre **no fim do fluxo** (ADR-0005). Máquina de estados
   `PENDENTE → PAGAMENTO_APROVADO | RECUSADO`, `RECUSADO → PENDENTE` (nova cobrança) e
-  `PAGAMENTO_APROVADO → ESTORNADO` (estorno real no Mercado Pago).
+  `PAGAMENTO_APROVADO → ESTORNADO` (estorno no Mercado Pago; ainda sem gatilho no os-service).
 - **Histórico de pagamento** (append-only) para auditoria e verificação.
 
 ---
@@ -54,7 +54,7 @@ FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
 | Nenhum acesso ao banco de outro serviço | Recebe os itens já precificados por mensagem; **não** acessa estoque/OS |
 | REST + mensageria assíncrona | API REST (orçamento/pagamento) + **SNS/SQS** (comandos/eventos) |
 | **Pagamento Mercado Pago** | `PaymentGatewayPort` com adapter Mercado Pago (Checkout Pro, sandbox/produção) + job que consulta o pagamento |
-| Saga Pattern + compensação | Participa da Saga; publica `OrcamentoFalhou` para retry/compensação; estorno via `ComandoEstornarPagamento` |
+| Saga Pattern + compensação | Participa da Saga; publica `OrcamentoFalhou` para retry/compensação; estorno via `ComandoEstornarPagamento` (implementado aqui; o os-service ainda não envia o comando) |
 | Testes + 80% cobertura + Sonar | JaCoCo gate 80% no `verify` + SonarCloud (cobertura ~86%) |
 | CI/CD + deploy K8s + branch protegida | Pipeline próprio; `main` protegida |
 
@@ -449,7 +449,7 @@ sem dono registrado (anterior a essa regra) só é visível ao staff.
   (404) e que o job de consulta está ativo.
 - **Teste de contrato da Saga** (`BillingSagaContractTest`): consome o exemplo de
   `ComandoGerarOrcamento` do contrato e confere os campos de tudo o que publica.
-- Cobertura atual (medida em 2026-11-15): **85,8% de linhas** e 72,9% de branches (`target/site/jacoco/index.html`).
+- Cobertura atual (medida em 2026-11-15): **87,2% de linhas** e 72,7% de branches (`target/site/jacoco/index.html`).
 - Evidência por execução do CI: artefato `jacoco-report` do job `unit-test` (relatório HTML) e o Quality Gate do SonarCloud no job `code-analysis`.
 
 ---
