@@ -7,7 +7,8 @@
   "variable": [
     {"key": "baseUrl", "value": "http://localhost:8082"},
     {"key": "token", "value": ""},
-    {"key": "serviceOrderId", "value": ""}
+    {"key": "serviceOrderId", "value": ""},
+    {"key": "gatewayPaymentId", "value": ""}
   ],
   "auth": {
     "type": "bearer",
@@ -31,13 +32,20 @@
           "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/api/payments/service-order/{{serviceOrderId}}", "host": ["{{baseUrl}}"], "path": ["api", "payments", "service-order", "{{serviceOrderId}}"]}}
         },
         {
-          "name": "Webhook do gateway (aprovação/recusa)",
+          "name": "Buscar cobrança da OS (captura gatewayPaymentId e checkoutUrl)",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) { pm.collectionVariables.set('gatewayPaymentId', pm.response.json().gatewayPaymentId); }"
+          ]}}],
+          "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/payments/service-order/{{serviceOrderId}}", "host": ["{{baseUrl}}"], "path": ["api", "payments", "service-order", "{{serviceOrderId}}"]}}
+        },
+        {
+          "name": "Webhook simulado (só local, PAYMENT_PROVIDER=fake; approved=false recusa)",
           "request": {
             "method": "POST",
             "auth": {"type": "noauth"},
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "url": {"raw": "{{baseUrl}}/api/payments/webhook", "host": ["{{baseUrl}}"], "path": ["api", "payments", "webhook"]},
-            "body": {"mode": "raw", "raw": "{\n  \"serviceOrderId\": \"{{serviceOrderId}}\",\n  \"status\": \"APPROVED\"\n}"}
+            "body": {"mode": "raw", "raw": "{\n  \"gatewayPaymentId\": \"{{gatewayPaymentId}}\",\n  \"approved\": true\n}"}
           }
         },
         {
