@@ -358,7 +358,7 @@ pod a partir deles (o `k8s/secret.yaml` só tem placeholders) e falha no início
 |---|---|---|
 | `SPRING_DATASOURCE_URL` / `_USERNAME` | Postgres local | Banco próprio do Billing |
 | `SPRING_DATASOURCE_PASSWORD` | — (obrigatório; dev no perfil `local`) | Senha do banco |
-| `JWT_PUBLIC_KEY` | — (obrigatório; dev no perfil `local`) | Chave **pública** RS256 da Lambda de login: o serviço verifica token, não emite |
+| `JWT_PUBLIC_KEY` | — (obrigatório; em dev vem do `.env` do compose, gerado por `workbench-messaging/scripts/dev-keys.sh`) | Chave **pública** RS256 da Lambda de login: o serviço verifica token, não emite |
 | `PAYMENT_PROVIDER` | — (obrigatório; `fake` no perfil `local`) | `fake` (webhook simulado, sem assinatura — só local/testes) ou `mercadopago` (AWS, job de consulta). Sem valor, o serviço não sobe, e `fake` fora do perfil `local` também não sobe (`FakeProviderGuard`): o webhook aberto nunca aparece por omissão nem por engano |
 | `MP_ACCESS_TOKEN` / `MP_BASE_URL` | — | credenciais do Mercado Pago (quando `mercadopago`) |
 | `MP_NOTIFICATION_URL` | — | (opcional) URL de notificação enviada na preferência; a confirmação não depende dela |
