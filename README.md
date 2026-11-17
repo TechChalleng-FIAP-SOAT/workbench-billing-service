@@ -1,5 +1,7 @@
 # workbench-billing-service — Billing Service
 
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=TechChalleng-FIAP-SOAT_workbench-billing-service&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=TechChalleng-FIAP-SOAT_workbench-billing-service) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=TechChalleng-FIAP-SOAT_workbench-billing-service&metric=coverage)](https://sonarcloud.io/component_measures?id=TechChalleng-FIAP-SOAT_workbench-billing-service&metric=coverage)
+
 Microsserviço de **orçamento e pagamento** da plataforma Workbench (Tech Challenge —
 FIAP Pós Tech, Fase 4). Gera o orçamento da OS e processa o pagamento via
 **Mercado Pago**, com histórico append-only.
@@ -453,6 +455,15 @@ sem dono registrado (anterior a essa regra) só é visível ao staff.
 - **Teste de contrato da Saga** (`BillingSagaContractTest`): consome o exemplo de
   `ComandoGerarOrcamento` do contrato e confere os campos de tudo o que publica.
 - Cobertura atual (medida em 2026-11-16): **86,7% de linhas** e 72,7% de branches (`target/site/jacoco/index.html`).
+
+  Relatório JaCoCo do `mvn verify` sobre a `main` em 2026-11-16 (a linha **Total** é a cobertura
+  do serviço; a coluna *Lines* mostra linhas perdidas/total):
+
+  ![Cobertura JaCoCo](docs/cobertura-jacoco.png)
+
+  O badge *Coverage* no topo vem do SonarCloud, que mede a branch `main` (o número dele é um
+  pouco diferente porque o Sonar conta linhas e condições juntas).
+
 - Evidência por execução do CI: artefato `jacoco-report` do job `unit-test` (relatório HTML) e o Quality Gate do SonarCloud no job `code-analysis`.
 
 ---
